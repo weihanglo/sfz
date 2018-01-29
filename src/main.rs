@@ -1,7 +1,12 @@
+// Copyright (c) 2018 Weihang Lo. All rights reserved.
+//
+// See the LICENSE file at the top-level directory of this distribution.
+
 extern crate clap;
 extern crate futures;
 extern crate hyper;
 extern crate percent_encoding;
+extern crate tera;
 
 mod server;
 
