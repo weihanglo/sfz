@@ -148,10 +148,14 @@ fn handle_dir(dir_path: &Path) -> io::Result<Vec<u8>> {
     let base_path = &env::current_dir()?;
 
     // Prepare dirname of current dir relative to base path.
-    let dir_name = {
+    let (dir_name, dir_path_vec) = {
         let base_parent = base_path.parent().unwrap_or(base_path);
         let path = dir_path.strip_prefix(base_parent).unwrap();
-        format!("{}/", path.to_str().unwrap())
+        let dir_path_vec = path.iter()
+            .map(|s| s.to_str().unwrap())
+            .collect::<Vec<_>>();
+        let dir_name = format!("{}/", path.to_str().unwrap());
+        (dir_name, dir_path_vec)
     };
 
     // Item for popping back to parent directory.
@@ -161,9 +165,10 @@ fn handle_dir(dir_path: &Path) -> io::Result<Vec<u8>> {
             .strip_prefix(base_path).unwrap()
             .to_str().unwrap()
         ).to_owned();
-        let mut map = HashMap::with_capacity(2);
+        let mut map = HashMap::with_capacity(3);
         map.insert("name", "..".to_owned());
         map.insert("path", parent_path);
+        map.insert("is_dir", "1".to_owned());
         files.push(map);
     }
 
@@ -171,23 +176,24 @@ fn handle_dir(dir_path: &Path) -> io::Result<Vec<u8>> {
         entry?.path()
             .strip_prefix(base_path) // Strip prefix to build a relative path.
             .and_then(|rel_path| {
+                // Use HashMap for default serialization Tera provides.
+                let mut map = HashMap::with_capacity(3);
+
                 // Construct file name.
-                let name = {
-                    let mut name = rel_path
-                        .file_name().unwrap()
-                        .to_str().unwrap()
-                        .to_owned();
-                    if rel_path.is_dir() {
-                        name.push('/');
-                    }
-                    name
-                };
+                let name = rel_path
+                    .file_name().unwrap()
+                    .to_str().unwrap()
+                    .to_owned();
+                map.insert("name", name);
+
                 // Construct hyperlink.
                 let path = format!("/{}", rel_path.to_str().unwrap());
-                // Use HashMap for default serialization Tera provides.
-                let mut map = HashMap::with_capacity(2);
-                map.insert("name", name);
                 map.insert("path", path);
+
+                // Indicate that the file is a directory.
+                if rel_path.is_dir() {
+                    map.insert("is_dir", "1".to_owned());
+                }
                 files.push(map);
                 Ok(())
             }).unwrap_or(()); // Prevent returning Result.
@@ -197,6 +203,8 @@ fn handle_dir(dir_path: &Path) -> io::Result<Vec<u8>> {
     let mut context = Context::new();
     context.add("files", &files);
     context.add("dir_name", &dir_name);
+    context.add("dir_path_vec", &dir_path_vec);
+    context.add("style", include_str!("style.css"));
     let page = Tera::one_off(include_str!("template.html"), &context, true)
         .unwrap_or_else(|e| format!("500 Internal server error: {}", e));
     Ok(Vec::from(page))

@@ -4,11 +4,31 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
     <title>Files in {{ dir_name }}</title>
+    <style>{{ style | safe }}</style>
   </head>
   <body>
+    <div class="path">
+      {% for path in dir_path_vec %}
+        <span class="component">
+          {% if loop.last %}
+            <b>{{ path }}</b>
+          {% else %}
+            {{ path }}
+          {% endif %}
+        </span>
+        <span class="separator">/</span>
+      {% endfor %}
+    </div>
     <ul>
       {% for file in files %}
-        <li><a href={{file.path}}>{{file.name}}</a></li>
+        <li>
+          {% if file.is_dir %}
+            <svg height="16" viewBox="0 0 14 16" width="14"><path fill-rule="evenodd" d="M13 4H7V3c0-.66-.31-1-1-1H1c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1V5c0-.55-.45-1-1-1zM6 4H1V3h5v1z"></path></svg>
+          {% else %}
+            <svg height="16" viewBox="0 0 12 16" width="12"><path fill-rule="evenodd" d="M6 5H2V4h4v1zM2 8h7V7H2v1zm0 2h7V9H2v1zm0 2h7v-1H2v1zm10-7.5V14c0 .55-.45 1-1 1H1c-.55 0-1-.45-1-1V2c0-.55.45-1 1-1h7.5L12 4.5zM11 5L8 2H1v12h10V5z"></path></svg>
+          {% endif %}
+          <a href="{{ file.path }}">{{ file.name }}</a>
+        </li>
       {% endfor %}
     </ul>
   </body>

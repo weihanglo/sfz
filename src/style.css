@@ -1,0 +1,49 @@
+html {
+  font-family: -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;
+  line-height: 1.5;
+  color: #24292e;
+}
+
+.path {
+  font-size: 1.25em;
+  padding: 2.5em;
+  padding-bottom: 0;
+}
+
+.path > .separator {
+  color: #586069;
+}
+
+ul {
+  font-size: 16;
+  padding: 0 2.5em;
+  max-width: 1000px;
+  display: flex;
+  flex-wrap: wrap;
+}
+
+li {
+  display: flex;
+  list-style: none;
+  width: 200px;
+  padding: 1em;
+}
+
+li svg {
+  height: 100%;
+  fill: rgba(3,47,98,0.5);
+  padding-right: 0.5em;
+}
+
+li a {
+  color: #0366d6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  display: block;
+  text-decoration: none;
+}
+
+li a:hover {
+  text-decoration: underline;
+}
