@@ -2,6 +2,12 @@
 name = "serve"
 version = "0.1.0"
 authors = ["Weihang Lo <weihanglotw@gmail.com>"]
+description = "A simple static file serving command-line tool."
+repository = "https://github.com/weihanglo/serve"
+readme = "README.md"
+keywords = ["cli", "serve"]
+categories = ["command-line-utilities", "command-line-interface"]
+license = "MIT"
 
 [dependencies]
 clap = "2.29"
@@ -10,4 +16,4 @@ hyper = "0.11"
 mime_guess = "2.0.0-alpha"
 percent-encoding = "1.0"
 tera = "0.11"
-unicase = "2.1" # Dependency of Hyper CORS headers
+unicase = "2.1" # Dependency for Hyper CORS headers

@@ -7,9 +7,11 @@ use std::env;
 use std::path::Path;
 use std::fs::File;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 
 use futures;
 use futures::future::Future;
+use hyper::server::{Http, Request, Response, Service};
 use hyper::{mime, Error};
 use hyper::header::{
     AccessControlAllowHeaders,
@@ -19,7 +21,6 @@ use hyper::header::{
     Headers,
     Server,
 };
-use hyper::server::{Http, Request, Response, Service};
 use unicase::Ascii;
 use percent_encoding::percent_decode;
 use tera::{Tera, Context};
@@ -28,44 +29,25 @@ use mime_guess::get_mime_type_opt;
 const SERVER_VERSION: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct ServerOptions {
-    host: &'static str,
-    port: u16,
-    cors: bool,
+    pub cors: bool,
 }
 
 impl Default for ServerOptions {
     fn default() -> Self {
-        ServerOptions {
-            host: "127.0.0.1",
-            port: 8888,
+        Self {
             cors: false,
         }
     }
 }
 
-#[derive(Debug)]
-pub struct MyServer {
-    options: ServerOptions,
-}
-
-impl MyServer {
-    pub fn new(options: ServerOptions) -> Self {
-        Self { options }
-    }
-
-    /// Run the server.
-    pub fn serve(&self) {
-        println!("{:?}", self.options);
-        let options = self.options.clone();
-        let ServerOptions { host, port, .. } = options;
-        let addr = format!("{}:{}", host, port).parse().unwrap();
-        let server = Http::new().bind(&addr, move || {
-            Ok(MyService::new(options))
-        }).unwrap();
-        server.run().unwrap();
-    }
+/// Run the server.
+pub fn serve(addr: &SocketAddr, options: ServerOptions) {
+    let server = Http::new().bind(&addr, move || {
+        Ok(MyService::new(options.clone()))
+    }).unwrap();
+    server.run().unwrap();
 }
 
 struct MyService {
