@@ -5,38 +5,48 @@
 use std::io::{self, BufReader};
 use std::env;
 use std::path::Path;
-use std::fs::File;
+use std::fs;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 
 use futures;
 use futures::future::Future;
 use hyper::server::{Http, Request, Response, Service};
-use hyper::{mime, Error};
+use hyper::{StatusCode, mime, Error};
 use hyper::header::{
     AccessControlAllowHeaders,
     AccessControlAllowOrigin,
+    CacheControl,
+    CacheDirective,
     ContentLength,
     ContentType,
+    ETag,
+    EntityTag,
     Headers,
+    IfModifiedSince,
+    IfNoneMatch,
+    LastModified,
     Server,
 };
 use unicase::Ascii;
 use percent_encoding::percent_decode;
 use tera::{Tera, Context};
 use mime_guess::get_mime_type_opt;
+use md5;
 
 const SERVER_VERSION: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, Clone)]
 pub struct ServerOptions {
+    pub cache: u32,
     pub cors: bool,
 }
 
 impl Default for ServerOptions {
     fn default() -> Self {
         Self {
+            cache: 0,
             cors: false,
         }
     }
@@ -61,7 +71,7 @@ impl Service for MyService {
     type Future = Box<Future<Item=Self::Response, Error=Self::Error>>;
 
     fn call(&self, req: Self::Request) -> Self::Future {
-        let resp = self.handle_request(&req);
+        let resp = self.handle_request(req);
         Box::new(futures::finished(resp))
     }
 }
@@ -72,41 +82,32 @@ impl MyService {
     }
 
     /// Request handler for `MyService`.
-    fn handle_request(&self, req: &Request) -> Response {
-        // Remove leading slash.
-        let req_path = &req.path()[1..].as_bytes();
-        // URI percent decode.
-        let req_path = percent_decode(req_path)
-            .decode_utf8()
-            .unwrap()
-            .into_owned();
-        let req_path = env::current_dir().unwrap().join(req_path);
-
-        let error_handler = |e: io::Error| Vec::from(format!("Error: {}", e));
-        let body = if req_path.is_dir() {
-            handle_dir(&req_path).unwrap_or_else(error_handler)
-        } else {
-            handle_file(&req_path).unwrap_or_else(error_handler)
+    fn handle_request(&self, req: Request) -> Response {
+        let req_path = {
+            // Remove leading slash.
+            let path = &req.path()[1..].as_bytes();
+            // URI percent decode.
+            let path = percent_decode(path)
+                .decode_utf8()
+                .unwrap()
+                .into_owned();
+            env::current_dir().unwrap().join(path)
         };
 
-        // MIME type guessing.
-        let mime_type = if req_path.is_dir() {
-            mime::TEXT_HTML_UTF_8
-        } else {
-            match req_path.extension() {
-                Some(ext) => {
-                    get_mime_type_opt(ext.to_str().unwrap_or(""))
-                        .unwrap_or(mime::TEXT_PLAIN)
-                }
-                None => mime::TEXT_PLAIN,
-            }
-        };
+        // Construct response.
+        let mut response = Response::new();
 
+        // Prepare response body.
+        // Being mutable for further modification.
+        let mut body = if req_path.is_dir() {
+            handle_dir(&req_path)
+        } else {
+            handle_file(&req_path)
+        }.unwrap_or_else(|e| Vec::from(format!("Error: {}", e)));
+
+        // Prepare response headers.
         let mut headers = Headers::new();
-        // Default headers
-        headers.set(ContentType(mime_type));
-        headers.set(ContentLength(body.len() as u64));
-        headers.set(Server::new(SERVER_VERSION));
+
         // CORS headers
         if self.options.cors {
             headers.set(AccessControlAllowOrigin::Any);
@@ -118,9 +119,51 @@ impl MyService {
             ]));
         }
 
-        Response::new()
-            .with_headers(headers)
+        // HTTP Caches headers
+        if !req_path.is_dir() {
+            // Cache-Control.
+            headers.set(CacheControl(vec![
+                CacheDirective::Public,
+                CacheDirective::MaxAge(self.options.cache),
+            ]));
+            // Last-Modified-Time from file metadata `mtime`.
+            let mtime = fs::metadata(&req_path)
+                .and_then(|meta| meta.modified())
+                .unwrap();
+            // ETag from md5 hashing.
+            let last_modified = LastModified(mtime.into());
+            let etag = ETag(EntityTag::strong(
+                format!("{:x}", md5::compute(&body)))
+            );
+            let not_modified = if let Some(if_none_match) = req.headers()
+                .get::<IfNoneMatch>() {
+                // `If-None-Match` takes presedence over `If-Modified-Since`.
+                if_etag_matches(&etag, &if_none_match)
+            } else if let Some(if_modified_since) = req.headers()
+                .get::<IfModifiedSince>() {
+                if_resource_unmodified(&last_modified, &if_modified_since)
+            } else {
+                false // Assumed resources are modified.
+            };
+            if not_modified {
+                response.set_status(StatusCode::NotModified);
+                // Do not response with any body if resource is unmodified.
+                body = vec![];
+            }
+            headers.set(last_modified);
+            headers.set(etag);
+        }
+
+        // Common headers
+        headers.set(ContentType(guess_mime_type(&req_path)));
+        headers.set(Server::new(SERVER_VERSION));
+        if body.len() > 0 {
+            headers.set(ContentLength(body.len() as u64));
+        }
+
+        response
             .with_body(body)
+            .with_headers(headers)
     }
 }
 
@@ -195,8 +238,62 @@ fn handle_dir(dir_path: &Path) -> io::Result<Vec<u8>> {
 /// Send a buffer of file to client.
 fn handle_file(file_path: &Path) -> io::Result<Vec<u8>> {
     use std::io::prelude::*;
-    let f = File::open(file_path)?;
+    let f = fs::File::open(file_path)?;
     let mut buffer = Vec::new();
     BufReader::new(f).read_to_end(&mut buffer)?;
     Ok(buffer)
+}
+
+/// Guess MIME type of a path.
+/// Return `text/html` if the path refers to a directory.
+fn guess_mime_type(path: &Path) -> mime::Mime {
+    if path.is_dir() {
+        mime::TEXT_HTML_UTF_8
+    } else {
+        match path.extension() {
+            Some(ext) => {
+                get_mime_type_opt(ext.to_str().unwrap_or(""))
+                    .unwrap_or(mime::TEXT_PLAIN_UTF_8)
+            }
+            None => mime::TEXT_PLAIN_UTF_8,
+        }
+    }
+}
+
+/// Check if ETag matches any other ETags in `If-None-Match` headers.
+///
+/// To support HTTP range request, the comparison uses strong ETag comparsion
+/// algorithm to determine modification state.
+fn if_etag_matches(
+    etag: &ETag,
+    if_none_match: &IfNoneMatch
+) -> bool {
+    match *if_none_match {
+        IfNoneMatch::Any => true,
+        IfNoneMatch::Items(ref tags) => {
+            tags.iter().any(|tag| tag.strong_eq(etag))
+        }
+    }
+}
+
+/// Check if requested resource is unmodified.
+fn if_resource_unmodified(
+    last_modified: &LastModified,
+    if_modified_since: &IfModifiedSince
+) -> bool {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let IfModifiedSince(since) = *if_modified_since;
+    let LastModified(modified) = *last_modified;
+    // Convert to seconds to omit subsecs precision.
+    let modified: SystemTime = modified.into();
+    let since: SystemTime = since.into();
+    let since = since
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let modified = modified
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    since >= modified
 }
