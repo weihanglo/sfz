@@ -32,12 +32,20 @@ fn main() {
             .value_name("ADDRESS");
 
     let arg_cors = Arg::with_name("cors")
+            .short("c")
             .long("cors")
             .help("Enable Cross-Origin Resource Sharing from any origin (*)");
 
+    let arg_cache = Arg::with_name("cache")
+            .long("cache")
+            .default_value("0")
+            .help("Specify max-age of HTTP caching in seconds")
+            .value_name("SECONDS");
+
     let matches = app_from_crate!()
-        .arg(arg_port)
         .arg(arg_address)
+        .arg(arg_port)
+        .arg(arg_cache)
         .arg(arg_cors)
         .get_matches();
 
@@ -48,9 +56,11 @@ fn main() {
             .map_err(|e| format!("Error: {}", e))
             .unwrap()
     };
-
+    let cache = value_t!(matches.value_of("cache"), u32).unwrap_or_default();
     let cors = matches.is_present("cors");
+
     let options = ServerOptions {
+        cache,
         cors,
         ..Default::default()
     };
