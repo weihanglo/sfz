@@ -13,6 +13,7 @@ extern crate unicase;
 extern crate md5;
 
 mod server;
+mod conditional_requests;
 
 use clap::Arg;
 use server::{serve, ServerOptions};

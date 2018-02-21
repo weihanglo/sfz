@@ -23,8 +23,6 @@ use hyper::header::{
     ETag,
     EntityTag,
     Headers,
-    IfModifiedSince,
-    IfNoneMatch,
     LastModified,
     Server,
 };
@@ -33,6 +31,8 @@ use percent_encoding::percent_decode;
 use tera::{Tera, Context};
 use mime_guess::get_mime_type_opt;
 use md5;
+
+use ::conditional_requests::{is_precondition_failed, is_fresh};
 
 const SERVER_VERSION: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
@@ -95,18 +95,17 @@ impl MyService {
         };
 
         // Construct response.
-        let mut response = Response::new();
+        let response = Response::new();
+        let mut headers = Headers::new();
+        headers.set(Server::new(SERVER_VERSION));
 
         // Prepare response body.
         // Being mutable for further modification.
-        let mut body = if req_path.is_dir() {
+        let body = if req_path.is_dir() {
             handle_dir(&req_path)
         } else {
             handle_file(&req_path)
         }.unwrap_or_else(|e| Vec::from(format!("Error: {}", e)));
-
-        // Prepare response headers.
-        let mut headers = Headers::new();
 
         // CORS headers
         if self.options.cors {
@@ -119,7 +118,7 @@ impl MyService {
             ]));
         }
 
-        // HTTP Caches headers
+        // Extra process for serving files.
         if !req_path.is_dir() {
             // Cache-Control.
             headers.set(CacheControl(vec![
@@ -132,38 +131,34 @@ impl MyService {
                 .unwrap();
             // ETag from md5 hashing.
             let last_modified = LastModified(mtime.into());
-            let etag = ETag(EntityTag::strong(
+            let etag = ETag(EntityTag::weak(
                 format!("{:x}", md5::compute(&body)))
             );
-            let not_modified = if let Some(if_none_match) = req.headers()
-                .get::<IfNoneMatch>() {
-                // `If-None-Match` takes presedence over `If-Modified-Since`.
-                if_etag_matches(&etag, &if_none_match)
-            } else if let Some(if_modified_since) = req.headers()
-                .get::<IfModifiedSince>() {
-                if_resource_unmodified(&last_modified, &if_modified_since)
-            } else {
-                false // Assumed resources are modified.
-            };
-            if not_modified {
-                response.set_status(StatusCode::NotModified);
-                // Do not response with any body if resource is unmodified.
-                body = vec![];
+
+            // Validate preconditions of conditional requests.
+            if is_precondition_failed(&req, &etag, &last_modified) {
+                return response
+                    .with_status(StatusCode::PreconditionFailed)
+                    .with_headers(headers)
             }
-            headers.set(last_modified);
-            headers.set(etag);
+
+            // Validate cache freshness.
+            if is_fresh(&req, &etag, &last_modified) {
+                return response
+                    .with_status(StatusCode::NotModified)
+                    .with_headers(headers)
+            }
         }
 
         // Common headers
         headers.set(ContentType(guess_mime_type(&req_path)));
-        headers.set(Server::new(SERVER_VERSION));
         if body.len() > 0 {
             headers.set(ContentLength(body.len() as u64));
         }
 
         response
-            .with_body(body)
             .with_headers(headers)
+            .with_body(body)
     }
 }
 
@@ -258,42 +253,4 @@ fn guess_mime_type(path: &Path) -> mime::Mime {
             None => mime::TEXT_PLAIN_UTF_8,
         }
     }
-}
-
-/// Check if ETag matches any other ETags in `If-None-Match` headers.
-///
-/// To support HTTP range request, the comparison uses strong ETag comparsion
-/// algorithm to determine modification state.
-fn if_etag_matches(
-    etag: &ETag,
-    if_none_match: &IfNoneMatch
-) -> bool {
-    match *if_none_match {
-        IfNoneMatch::Any => true,
-        IfNoneMatch::Items(ref tags) => {
-            tags.iter().any(|tag| tag.strong_eq(etag))
-        }
-    }
-}
-
-/// Check if requested resource is unmodified.
-fn if_resource_unmodified(
-    last_modified: &LastModified,
-    if_modified_since: &IfModifiedSince
-) -> bool {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let IfModifiedSince(since) = *if_modified_since;
-    let LastModified(modified) = *last_modified;
-    // Convert to seconds to omit subsecs precision.
-    let modified: SystemTime = modified.into();
-    let since: SystemTime = since.into();
-    let since = since
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let modified = modified
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    since >= modified
 }
