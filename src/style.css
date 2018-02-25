@@ -10,6 +10,16 @@ html {
   padding-bottom: 0;
 }
 
+.path > a {
+  color: #0366d6;
+  text-decoration: none;
+}
+
+/* final path */
+.path > b {
+  color: #24292e;
+}
+
 .path > .separator {
   color: #586069;
 }
@@ -27,6 +37,10 @@ li {
   list-style: none;
   width: 200px;
   padding: 1em;
+}
+
+li div {
+  width: 1.5em;
 }
 
 li svg {

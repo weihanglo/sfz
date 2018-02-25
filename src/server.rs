@@ -206,14 +206,22 @@ fn handle_dir(dir_path: &Path) -> io::Result<Vec<u8>> {
     let base_path = &env::current_dir()?;
 
     // Prepare dirname of current dir relative to base path.
-    let (dir_name, dir_path_vec) = {
-        let base_parent = base_path.parent().unwrap_or(base_path);
-        let path = dir_path.strip_prefix(base_parent).unwrap();
-        let dir_path_vec = path.iter()
-            .map(|s| s.to_str().unwrap())
+    let (dir_name, paths) = {
+        let dir_name = base_path.file_name().unwrap().to_str().unwrap();
+        let path = dir_path.strip_prefix(base_path).unwrap();
+        let path_names = path.iter()
+            .map(|s| s.to_str().unwrap());
+        let abs_paths = path.iter()
+            .scan(::std::path::PathBuf::new(), |state, path| {
+                state.push(path);
+                Some(state.to_owned())
+            })
+            .map(|s| format!("/{}", s.to_str().unwrap()));
+        let mut paths = path_names
+            .zip(abs_paths)
             .collect::<Vec<_>>();
-        let dir_name = format!("{}/", path.to_str().unwrap());
-        (dir_name, dir_path_vec)
+        paths.insert(0, (dir_name, String::from("/")));
+        (dir_name, paths)
     };
 
     // Item for popping back to parent directory.
@@ -261,7 +269,7 @@ fn handle_dir(dir_path: &Path) -> io::Result<Vec<u8>> {
     let mut context = Context::new();
     context.add("files", &files);
     context.add("dir_name", &dir_name);
-    context.add("dir_path_vec", &dir_path_vec);
+    context.add("paths", &paths);
     context.add("style", include_str!("style.css"));
     let page = Tera::one_off(include_str!("template.html"), &context, true)
         .unwrap_or_else(|e| format!("500 Internal server error: {}", e));
