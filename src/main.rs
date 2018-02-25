@@ -10,6 +10,9 @@ extern crate percent_encoding;
 extern crate tera;
 extern crate mime_guess;
 extern crate unicase;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 
 mod server;
 mod conditional_requests;

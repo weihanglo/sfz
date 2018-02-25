@@ -5,7 +5,6 @@
 use std::io::{self, BufReader};
 use std::{env, fs};
 use std::path::Path;
-use std::collections::HashMap;
 use std::net::SocketAddr;
 
 use futures;
@@ -59,6 +58,13 @@ impl Default for ServerOptions {
             cors: false,
         }
     }
+}
+
+#[derive(Debug, Serialize, Eq, PartialEq, Ord, PartialOrd)]
+pub struct FileItem {
+    is_file: bool, // Indicate that file is a directory.
+    name: String,
+    path: String,
 }
 
 /// Run the server.
@@ -224,45 +230,42 @@ fn handle_dir(dir_path: &Path) -> io::Result<Vec<u8>> {
         (dir_name, paths)
     };
 
-    // Item for popping back to parent directory.
-    if base_path != dir_path {
-        let parent_path = format!("/{}", dir_path
-            .parent().unwrap()
-            .strip_prefix(base_path).unwrap()
-            .to_str().unwrap()
-        ).to_owned();
-        let mut map = HashMap::with_capacity(3);
-        map.insert("name", "..".to_owned());
-        map.insert("path", parent_path);
-        map.insert("is_dir", "1".to_owned());
-        files.push(map);
-    }
-
     for entry in dir_path.read_dir()? {
         entry?.path()
             .strip_prefix(base_path) // Strip prefix to build a relative path.
             .and_then(|rel_path| {
-                // Use HashMap for default serialization Tera provides.
-                let mut map = HashMap::with_capacity(3);
-
                 // Construct file name.
                 let name = rel_path
                     .file_name().unwrap()
                     .to_str().unwrap()
                     .to_owned();
-                map.insert("name", name);
-
                 // Construct hyperlink.
                 let path = format!("/{}", rel_path.to_str().unwrap());
-                map.insert("path", path);
-
-                // Indicate that the file is a directory.
-                if rel_path.is_dir() {
-                    map.insert("is_dir", "1".to_owned());
-                }
-                files.push(map);
+                let item = FileItem {
+                    name,
+                    path,
+                    is_file: !rel_path.is_dir(),
+                };
+                files.push(item);
                 Ok(())
             }).unwrap_or(()); // Prevent returning Result.
+    }
+
+    files.sort();
+
+    // Item for popping back to parent directory.
+    if base_path != dir_path {
+        let path = format!("/{}", dir_path
+            .parent().unwrap()
+            .strip_prefix(base_path).unwrap()
+            .to_str().unwrap()
+        );
+        let item = FileItem {
+            name: "..".to_owned(),
+            path,
+            is_file: false,
+        };
+        files.insert(0, item);
     }
 
     // Render page with Tera template engine.
