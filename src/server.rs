@@ -3,9 +3,8 @@
 // See the LICENSE file at the top-level directory of this distribution.
 
 use std::io::{self, BufReader};
-use std::env;
+use std::{env, fs};
 use std::path::Path;
-use std::fs;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 
@@ -14,6 +13,7 @@ use futures::future::Future;
 use hyper::server::{Http, Request, Response, Service};
 use hyper::{StatusCode, mime, Error};
 use hyper::header::{
+    AcceptRanges,
     AccessControlAllowHeaders,
     AccessControlAllowOrigin,
     CacheControl,
@@ -24,15 +24,24 @@ use hyper::header::{
     EntityTag,
     Headers,
     LastModified,
+    Range,
+    RangeUnit,
     Server,
 };
 use unicase::Ascii;
 use percent_encoding::percent_decode;
 use tera::{Tera, Context};
 use mime_guess::get_mime_type_opt;
-use md5;
 
-use ::conditional_requests::{is_precondition_failed, is_fresh};
+use ::conditional_requests::{
+    is_fresh,
+    is_precondition_failed,
+};
+use ::range_requests::{
+    is_range_fresh,
+    is_satisfiable_range,
+    extract_range,
+};
 
 const SERVER_VERSION: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
@@ -72,7 +81,7 @@ impl Service for MyService {
 
     fn call(&self, req: Self::Request) -> Self::Future {
         let resp = self.handle_request(req);
-        Box::new(futures::finished(resp))
+        Box::new(futures::future::ok(resp))
     }
 }
 
@@ -95,17 +104,13 @@ impl MyService {
         };
 
         // Construct response.
-        let response = Response::new();
+        let mut response = Response::new();
         let mut headers = Headers::new();
         headers.set(Server::new(SERVER_VERSION));
 
         // Prepare response body.
         // Being mutable for further modification.
-        let body = if req_path.is_dir() {
-            handle_dir(&req_path)
-        } else {
-            handle_file(&req_path)
-        }.unwrap_or_else(|e| Vec::from(format!("Error: {}", e)));
+        let mut body: io::Result<Vec<u8>> = Ok(vec![]);
 
         // CORS headers
         if self.options.cors {
@@ -119,21 +124,27 @@ impl MyService {
         }
 
         // Extra process for serving files.
-        if !req_path.is_dir() {
+        if req_path.is_dir() {
+            body = handle_dir(&req_path);
+        } else {
             // Cache-Control.
             headers.set(CacheControl(vec![
                 CacheDirective::Public,
                 CacheDirective::MaxAge(self.options.cache),
             ]));
-            // Last-Modified-Time from file metadata `mtime`.
-            let mtime = fs::metadata(&req_path)
-                .and_then(|meta| meta.modified())
+            // Last-Modified-Time from file metadata _mtime_.
+            let (mtime, size) = fs::metadata(&req_path)
+                .map(|meta| (meta.modified().unwrap(), meta.len()))
                 .unwrap();
-            // ETag from md5 hashing.
             let last_modified = LastModified(mtime.into());
-            let etag = ETag(EntityTag::weak(
-                format!("{:x}", md5::compute(&body)))
-            );
+            // Concatenate _mtime_ and _file size_ to form a strong validator.
+            let etag = {
+                let mtime = mtime
+                    .duration_since(::std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                ETag(EntityTag::strong(format!("{}-{}", mtime, size)))
+            };
 
             // Validate preconditions of conditional requests.
             if is_precondition_failed(&req, &etag, &last_modified) {
@@ -148,13 +159,40 @@ impl MyService {
                     .with_status(StatusCode::NotModified)
                     .with_headers(headers)
             }
+
+            // Range Request support.
+            let mut is_range_request = false;
+            if let Some(range) = req.headers().get::<Range>() {
+                match (
+                    is_range_fresh(&req, &etag, &last_modified),
+                    is_satisfiable_range(range, size as u64)
+                ) {
+                    (true, Some(content_range)) => {
+                        // 206 Partial Content.
+                        is_range_request = true;
+                        if let Some(range) = extract_range(&content_range) {
+                            body = handle_file_with_range(&req_path, range);
+                        }
+                        headers.set(content_range);
+                        response.set_status(StatusCode::PartialContent);
+                    }
+                    // Respond entire entity if Range header contains
+                    // unsatisfiable range.
+                    _ => (),
+                }
+            }
+
+            if !is_range_request {
+                body = handle_file(&req_path);
+            }
         }
 
+        let body = body.unwrap_or_else(|e| Vec::from(format!("Error: {}", e)));
+
         // Common headers
+        headers.set(AcceptRanges(vec![RangeUnit::Bytes]));
         headers.set(ContentType(guess_mime_type(&req_path)));
-        if body.len() > 0 {
-            headers.set(ContentLength(body.len() as u64));
-        }
+        headers.set(ContentLength(body.len() as u64));
 
         response
             .with_headers(headers)
@@ -236,6 +274,26 @@ fn handle_file(file_path: &Path) -> io::Result<Vec<u8>> {
     let f = fs::File::open(file_path)?;
     let mut buffer = Vec::new();
     BufReader::new(f).read_to_end(&mut buffer)?;
+    Ok(buffer)
+}
+
+/// Send a buffer with specific range.
+fn handle_file_with_range(
+    file_path: &Path,
+    range: (u64, u64),
+) -> io::Result<Vec<u8>> {
+    use std::io::SeekFrom;
+    use std::io::prelude::*;
+    let (start, end) = range; // TODO: handle end - start < 0
+    if end <= start {
+        return Err(io::Error::from(io::ErrorKind::InvalidData))
+    }
+    let mut f = fs::File::open(file_path)?;
+    let mut buffer = Vec::new();
+    f.seek(SeekFrom::Start(start))?;
+    BufReader::new(f)
+        .take(end - start)
+        .read_to_end(&mut buffer)?;
     Ok(buffer)
 }
 

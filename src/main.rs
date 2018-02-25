@@ -10,10 +10,10 @@ extern crate percent_encoding;
 extern crate tera;
 extern crate mime_guess;
 extern crate unicase;
-extern crate md5;
 
 mod server;
 mod conditional_requests;
+mod range_requests;
 
 use clap::Arg;
 use server::{serve, ServerOptions};
