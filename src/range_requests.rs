@@ -35,8 +35,8 @@ pub fn is_range_fresh(
             }
         }
     }
-
-    false
+    // Always be fresh if there is no validators
+    true
 }
 
 /// Convert `Range` header field in incoming request to `Content-Range` header
