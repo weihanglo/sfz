@@ -15,6 +15,10 @@ html {
   text-decoration: none;
 }
 
+.path > a:hover {
+  text-decoration: underline;
+}
+
 /* final path */
 .path > b {
   color: #24292e;
