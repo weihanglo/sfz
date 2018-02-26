@@ -1,11 +1,11 @@
 [package]
-name = "serve"
+name = "surf"
 version = "0.1.0"
 authors = ["Weihang Lo <weihanglotw@gmail.com>"]
 description = "A simple static file serving command-line tool."
-repository = "https://github.com/weihanglo/serve"
+repository = "https://github.com/weihanglo/surf"
 readme = "README.md"
-keywords = ["cli", "serve"]
+keywords = ["cli"]
 categories = ["command-line-utilities", "command-line-interface"]
 license = "MIT"
 

@@ -1,4 +1,4 @@
-# serve
+# Surf
 
 A simple static file serving command-line tool.
 
