@@ -101,12 +101,13 @@ mod t_range {
 
     #[test]
     fn no_if_range_header() {
-        // Ignore range freshness validation. Return ture.
+        // Ignore if-range freshness validation. Return ture.
         let mut req = Request::new(Method::Get, "localhost".parse().unwrap());
         req.headers_mut().set(Range::Bytes(vec![]));
         let last_modified = LastModified(SystemTime::now().into());
         let etag = EntityTag::strong("".to_owned());
-        assert!(!is_range_fresh(&req, &ETag(etag), &last_modified));
+        // Always be fresh if there is no validators
+        assert!(is_range_fresh(&req, &ETag(etag), &last_modified));
     }
 
     #[test]
