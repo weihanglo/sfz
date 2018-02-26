@@ -10,12 +10,22 @@ categories = ["command-line-utilities", "command-line-interface"]
 license = "MIT"
 
 [dependencies]
+# Command-line
 clap = "2.29"
+
+# Server-related
 futures = "0.1"
 hyper = "0.11"
 mime_guess = "2.0.0-alpha"
 percent-encoding = "1.0"
-tera = "0.11"
 unicase = "2.1" # Dependency for Hyper CORS headers
-serde = "1.0"
+
+# Compression
+brotli = "1.1"
+flate2 = { version = "1.0", features = ["rust_backend"], default-features = false }
+
+# Rendering
+tera = "0.11"
+serde = "1.0" # For tera serializing variables to template.
 serde_derive = "1.0"
+

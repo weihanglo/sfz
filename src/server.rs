@@ -17,6 +17,7 @@ use hyper::header::{
     AccessControlAllowOrigin,
     CacheControl,
     CacheDirective,
+    ContentEncoding,
     ContentLength,
     ContentType,
     ETag,
@@ -26,6 +27,7 @@ use hyper::header::{
     Range,
     RangeUnit,
     Server,
+    Vary,
 };
 use unicase::Ascii;
 use percent_encoding::percent_decode;
@@ -41,6 +43,10 @@ use ::range_requests::{
     is_satisfiable_range,
     extract_range,
 };
+use ::content_codings::{
+    get_prior_encoding,
+    compress,
+};
 
 const SERVER_VERSION: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
@@ -49,6 +55,7 @@ const SERVER_VERSION: &str =
 pub struct ServerOptions {
     pub cache: u32,
     pub cors: bool,
+    pub compress: bool,
     pub path: PathBuf,
 }
 
@@ -56,6 +63,7 @@ impl Default for ServerOptions {
     fn default() -> Self {
         Self {
             cache: 0,
+            compress: true,
             cors: false,
             path: env::current_dir().unwrap_or_default(),
         }
@@ -205,7 +213,20 @@ impl MyService {
             }
         }
 
-        let body = body.unwrap_or_else(|e| Vec::from(format!("Error: {}", e)));
+        let mut body = body.unwrap_or_else(|e| Vec::from(format!("Error: {}", e)));
+
+        // Deal with compression.
+        if self.options.compress {
+            let encoding = get_prior_encoding(&req);
+            if let Ok(buf) = compress(&body, &encoding) {
+                body = buf;
+                // Representation varies, so responds with a `Vary` header.
+                headers.set(ContentEncoding(vec![encoding]));
+                headers.set(Vary::Items(vec![
+                    Ascii::new("Accept-Encoding".to_owned())
+                ]));
+            }
+        }
 
         // Common headers
         headers.set(AcceptRanges(vec![RangeUnit::Bytes]));
@@ -219,6 +240,11 @@ impl MyService {
 }
 
 /// Send a HTML page of all files under the path.
+///
+/// # Parameters
+///
+/// * `dir_path` - Directory to be listed files.
+/// * `base_path` - The base path resolving all filepaths under `dir_path`.
 fn handle_dir(dir_path: &Path, base_path: &Path) -> io::Result<Vec<u8>> {
     // Prepare dirname of current dir relative to base path.
     let (dir_name, paths) = {
@@ -295,6 +321,11 @@ fn handle_file(file_path: &Path) -> io::Result<Vec<u8>> {
 }
 
 /// Send a buffer with specific range.
+///
+/// # Parameters
+///
+/// * `file_path` - Path to the file that is going to send.
+/// * `range` - Tuple of `(start, end)` range (inclusive).
 fn handle_file_with_range(
     file_path: &Path,
     range: (u64, u64),
@@ -314,7 +345,7 @@ fn handle_file_with_range(
     Ok(buffer)
 }
 
-/// Guess MIME type of a path.
+/// Guess MIME type from a path.
 /// Return `text/html` if the path refers to a directory.
 fn guess_mime_type(path: &Path) -> mime::Mime {
     if path.is_dir() {

@@ -13,10 +13,13 @@ extern crate unicase;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+extern crate flate2;
+extern crate brotli;
 
 mod server;
 mod conditional_requests;
 mod range_requests;
+mod content_codings;
 
 use clap::Arg;
 use server::{serve, ServerOptions};
@@ -38,12 +41,11 @@ fn main() {
         .value_name("ADDRESS");
 
     let arg_cors = Arg::with_name("cors")
-        .short("C")
+        .short("c")
         .long("cors")
         .help("Enable Cross-Origin Resource Sharing from any origin (*)");
 
     let arg_cache = Arg::with_name("cache")
-        .short("c")
         .long("cache")
         .default_value("0")
         .help("Specify max-age of HTTP caching in seconds")
@@ -53,12 +55,18 @@ fn main() {
         .default_value(".")
         .help("Path to a directory for serving files");
 
+    let arg_unzipped = Arg::with_name("unzipped")
+        .short("Z")
+        .long("unzipped")
+        .help("Disable HTTP compression");
+
     let matches = app_from_crate!()
         .arg(arg_address)
         .arg(arg_port)
         .arg(arg_cache)
         .arg(arg_cors)
         .arg(arg_path)
+        .arg(arg_unzipped)
         .get_matches();
 
     let address = {
@@ -81,11 +89,13 @@ fn main() {
                 .canonicalize().unwrap()
         }
     };
+    let compress = !matches.is_present("unzipped");
 
     let options = ServerOptions {
         cache,
         cors,
         path,
+        compress,
         ..Default::default()
     };
 
