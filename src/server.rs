@@ -4,7 +4,7 @@
 
 use std::io::{self, BufReader};
 use std::{env, fs};
-use std::path::Path;
+use std::path::{PathBuf, Path};
 use std::net::SocketAddr;
 
 use futures;
@@ -49,6 +49,7 @@ const SERVER_VERSION: &str =
 pub struct ServerOptions {
     pub cache: u32,
     pub cors: bool,
+    pub path: PathBuf,
 }
 
 impl Default for ServerOptions {
@@ -56,6 +57,7 @@ impl Default for ServerOptions {
         Self {
             cache: 0,
             cors: false,
+            path: env::current_dir().unwrap_or_default(),
         }
     }
 }
@@ -106,17 +108,13 @@ impl MyService {
                 .decode_utf8()
                 .unwrap()
                 .into_owned();
-            env::current_dir().unwrap().join(path)
+            self.options.path.join(path)
         };
 
         // Construct response.
         let mut response = Response::new();
         let mut headers = Headers::new();
         headers.set(Server::new(SERVER_VERSION));
-
-        // Prepare response body.
-        // Being mutable for further modification.
-        let mut body: io::Result<Vec<u8>> = Ok(vec![]);
 
         // CORS headers
         if self.options.cors {
@@ -129,9 +127,23 @@ impl MyService {
             ]));
         }
 
+        // Handle 404 NotFound
+        if !req_path.exists() {
+            let body = "Not Found";
+            headers.set(ContentLength(body.len() as u64));
+            return response
+                .with_status(StatusCode::NotFound)
+                .with_headers(headers)
+                .with_body(body)
+        }
+
+        // Prepare response body.
+        // Being mutable for further modification.
+        let mut body: io::Result<Vec<u8>> = Ok(vec![]);
+
         // Extra process for serving files.
         if req_path.is_dir() {
-            body = handle_dir(&req_path);
+            body = handle_dir(&req_path, &self.options.path);
         } else {
             // Cache-Control.
             headers.set(CacheControl(vec![
@@ -207,13 +219,11 @@ impl MyService {
 }
 
 /// Send a HTML page of all files under the path.
-fn handle_dir(dir_path: &Path) -> io::Result<Vec<u8>> {
-    let mut files = Vec::new();
-    let base_path = &env::current_dir()?;
-
+fn handle_dir(dir_path: &Path, base_path: &Path) -> io::Result<Vec<u8>> {
     // Prepare dirname of current dir relative to base path.
     let (dir_name, paths) = {
-        let dir_name = base_path.file_name().unwrap().to_str().unwrap();
+        let dir_name = base_path.file_name().unwrap_or_default()
+            .to_str().unwrap();
         let path = dir_path.strip_prefix(base_path).unwrap();
         let path_names = path.iter()
             .map(|s| s.to_str().unwrap());
@@ -223,38 +233,32 @@ fn handle_dir(dir_path: &Path) -> io::Result<Vec<u8>> {
                 Some(state.to_owned())
             })
             .map(|s| format!("/{}", s.to_str().unwrap()));
-        let mut paths = path_names
-            .zip(abs_paths)
+        // Tuple structure: (name, path)
+        let paths = vec![(dir_name, String::from("/"))]
+            .into_iter()
+            .chain(path_names.zip(abs_paths))
             .collect::<Vec<_>>();
-        paths.insert(0, (dir_name, String::from("/")));
         (dir_name, paths)
     };
 
-    for entry in dir_path.read_dir()? {
-        entry?.path()
-            .strip_prefix(base_path) // Strip prefix to build a relative path.
-            .and_then(|rel_path| {
-                // Construct file name.
-                let name = rel_path
-                    .file_name().unwrap()
-                    .to_str().unwrap()
-                    .to_owned();
-                // Construct hyperlink.
-                let path = format!("/{}", rel_path.to_str().unwrap());
-                let item = FileItem {
-                    name,
-                    path,
-                    is_file: !rel_path.is_dir(),
-                };
-                files.push(item);
-                Ok(())
-            }).unwrap_or(()); // Prevent returning Result.
-    }
+    let files_iter = dir_path.read_dir()?
+        .map(|entry| entry.unwrap().path())
+        .map(|abs_path| {
+            let is_file = !abs_path.is_dir();
+            let rel_path = abs_path.strip_prefix(base_path).unwrap();
+            let name = rel_path
+                .file_name().unwrap()
+                .to_str().unwrap()
+                .to_owned();
+            // Construct hyperlink.
+            let path = format!("/{}", rel_path.to_str().unwrap());
+            FileItem { name, path, is_file }
+        });
 
-    files.sort();
-
-    // Item for popping back to parent directory.
-    if base_path != dir_path {
+    let mut files = if base_path == dir_path {
+        files_iter.collect::<Vec<_>>()
+    } else {
+        // Item for popping back to parent directory.
         let path = format!("/{}", dir_path
             .parent().unwrap()
             .strip_prefix(base_path).unwrap()
@@ -265,8 +269,10 @@ fn handle_dir(dir_path: &Path) -> io::Result<Vec<u8>> {
             path,
             is_file: false,
         };
-        files.insert(0, item);
-    }
+        vec![item].into_iter().chain(files_iter).collect::<Vec<_>>()
+    };
+    // Sort files (dir-first and lexicographic ordering).
+    files.sort_unstable();
 
     // Render page with Tera template engine.
     let mut context = Context::new();
