@@ -17,88 +17,16 @@ extern crate flate2;
 extern crate brotli;
 
 mod server;
-mod conditional_requests;
-mod range_requests;
-mod content_codings;
+mod http;
+mod cli;
 
-use clap::Arg;
-use server::{serve, ServerOptions};
-use std::env;
-use std::path::PathBuf;
+use ::cli::{Args, build_app};
+use ::server::serve;
 
 fn main() {
-    let arg_port = Arg::with_name("port")
-        .short("p")
-        .long("port")
-        .default_value("8888")
-        .help("Specify port to listen on")
-        .value_name("PORT");
+    let app = build_app();
+    let args = Args::parse(app.get_matches());
 
-    let arg_address = Arg::with_name("address")
-        .long("bind")
-        .default_value("127.0.0.1")
-        .help("Specify bind address")
-        .value_name("ADDRESS");
-
-    let arg_cors = Arg::with_name("cors")
-        .short("c")
-        .long("cors")
-        .help("Enable Cross-Origin Resource Sharing from any origin (*)");
-
-    let arg_cache = Arg::with_name("cache")
-        .long("cache")
-        .default_value("0")
-        .help("Specify max-age of HTTP caching in seconds")
-        .value_name("SECONDS");
-
-    let arg_path = Arg::with_name("path")
-        .default_value(".")
-        .help("Path to a directory for serving files");
-
-    let arg_unzipped = Arg::with_name("unzipped")
-        .short("Z")
-        .long("unzipped")
-        .help("Disable HTTP compression");
-
-    let matches = app_from_crate!()
-        .arg(arg_address)
-        .arg(arg_port)
-        .arg(arg_cache)
-        .arg(arg_cors)
-        .arg(arg_path)
-        .arg(arg_unzipped)
-        .get_matches();
-
-    let address = {
-        let ip = matches.value_of("address").unwrap_or_default();
-        let port = matches.value_of("port").unwrap_or_default();
-        format!("{}:{}", ip, port).parse()
-            .map_err(|e| format!("Error: {}", e))
-            .unwrap()
-    };
-    let cache = value_t!(matches.value_of("cache"), u32).unwrap_or_default();
-    let cors = matches.is_present("cors");
-    let path = {
-        let path = matches.value_of("path").unwrap_or_default();
-        let path = PathBuf::from(path);
-        if path.is_absolute() {
-            path
-        } else {
-            env::current_dir().unwrap_or_default()
-                .join(path)
-                .canonicalize().unwrap()
-        }
-    };
-    let compress = !matches.is_present("unzipped");
-
-    let options = ServerOptions {
-        cache,
-        cors,
-        path,
-        compress,
-        ..Default::default()
-    };
-
-    println!("Files serve on {}", address);
-    serve(&address, options);
+    println!("Files serve on {}", args.address());
+    serve(args);
 }

@@ -3,9 +3,8 @@
 // See the LICENSE file at the top-level directory of this distribution.
 
 use std::io::{self, BufReader};
-use std::{env, fs};
+use std::fs;
 use std::path::{PathBuf, Path};
-use std::net::SocketAddr;
 
 use futures;
 use futures::future::Future;
@@ -34,41 +33,23 @@ use percent_encoding::percent_decode;
 use tera::{Tera, Context};
 use mime_guess::get_mime_type_opt;
 
-use ::conditional_requests::{
+use ::cli::Args;
+use ::http::conditional_requests::{
     is_fresh,
     is_precondition_failed,
 };
-use ::range_requests::{
+use ::http::range_requests::{
     is_range_fresh,
     is_satisfiable_range,
     extract_range,
 };
-use ::content_codings::{
+use ::http::content_codings::{
     get_prior_encoding,
     compress,
 };
 
 const SERVER_VERSION: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
-
-#[derive(Debug, Clone)]
-pub struct ServerOptions {
-    pub cache: u32,
-    pub cors: bool,
-    pub compress: bool,
-    pub path: PathBuf,
-}
-
-impl Default for ServerOptions {
-    fn default() -> Self {
-        Self {
-            cache: 0,
-            compress: true,
-            cors: false,
-            path: env::current_dir().unwrap_or_default(),
-        }
-    }
-}
 
 #[derive(Debug, Serialize, Eq, PartialEq, Ord, PartialOrd)]
 pub struct FileItem {
@@ -78,15 +59,15 @@ pub struct FileItem {
 }
 
 /// Run the server.
-pub fn serve(addr: &SocketAddr, options: ServerOptions) {
-    let server = Http::new().bind(&addr, move || {
-        Ok(MyService::new(options.clone()))
+pub fn serve(args: Args) {
+    let server = Http::new().bind(&args.address(), move || {
+        Ok(MyService::new(args.to_owned()))
     }).unwrap();
     server.run().unwrap();
 }
 
 struct MyService {
-    options: ServerOptions,
+    args: Args,
 }
 
 impl Service for MyService {
@@ -102,8 +83,8 @@ impl Service for MyService {
 }
 
 impl MyService {
-    pub fn new(options: ServerOptions) -> Self {
-        Self { options }
+    pub fn new(args: Args) -> Self {
+        Self { args }
     }
 
     /// Request handler for `MyService`.
@@ -116,7 +97,7 @@ impl MyService {
                 .decode_utf8()
                 .unwrap()
                 .into_owned();
-            self.options.path.join(path)
+            self.args.path.join(path)
         };
 
         // Construct response.
@@ -125,7 +106,7 @@ impl MyService {
         headers.set(Server::new(SERVER_VERSION));
 
         // CORS headers
-        if self.options.cors {
+        if self.args.cors {
             headers.set(AccessControlAllowOrigin::Any);
             headers.set(AccessControlAllowHeaders(vec![
                 Ascii::new("Range".to_owned()),
@@ -151,12 +132,12 @@ impl MyService {
 
         // Extra process for serving files.
         if req_path.is_dir() {
-            body = handle_dir(&req_path, &self.options.path);
+            body = handle_dir(&req_path, &self.args.path);
         } else {
             // Cache-Control.
             headers.set(CacheControl(vec![
                 CacheDirective::Public,
-                CacheDirective::MaxAge(self.options.cache),
+                CacheDirective::MaxAge(self.args.cache),
             ]));
             // Last-Modified-Time from file metadata _mtime_.
             let (mtime, size) = fs::metadata(&req_path)
@@ -216,7 +197,7 @@ impl MyService {
         let mut body = body.unwrap_or_else(|e| Vec::from(format!("Error: {}", e)));
 
         // Deal with compression.
-        if self.options.compress {
+        if self.args.compress {
             let encoding = get_prior_encoding(&req);
             if let Ok(buf) = compress(&body, &encoding) {
                 body = buf;
@@ -254,7 +235,7 @@ fn handle_dir(dir_path: &Path, base_path: &Path) -> io::Result<Vec<u8>> {
         let path_names = path.iter()
             .map(|s| s.to_str().unwrap());
         let abs_paths = path.iter()
-            .scan(::std::path::PathBuf::new(), |state, path| {
+            .scan(PathBuf::new(), |state, path| {
                 state.push(path);
                 Some(state.to_owned())
             })
@@ -305,8 +286,8 @@ fn handle_dir(dir_path: &Path, base_path: &Path) -> io::Result<Vec<u8>> {
     context.add("files", &files);
     context.add("dir_name", &dir_name);
     context.add("paths", &paths);
-    context.add("style", include_str!("style.css"));
-    let page = Tera::one_off(include_str!("template.html"), &context, true)
+    context.add("style", include_str!("static/style.css"));
+    let page = Tera::one_off(include_str!("static/index.html"), &context, true)
         .unwrap_or_else(|e| format!("500 Internal server error: {}", e));
     Ok(Vec::from(page))
 }
