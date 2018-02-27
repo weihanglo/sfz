@@ -7,7 +7,7 @@ repository = "https://github.com/weihanglo/surf"
 readme = "README.md"
 keywords = ["cli"]
 categories = ["command-line-utilities", "command-line-interface"]
-license = "MIT"
+license = "MIT/Apache-2.0"
 
 [dependencies]
 # Command-line

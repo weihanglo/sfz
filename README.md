@@ -1,6 +1,6 @@
 # Surf
 
-[![Travis build status](https://travis-ci.org/weihanglo/surf.svg?branch=master)](https://travis-ci.org/weihanglo/surf) [![Appveyor build status](https://ci.appveyor.com/api/projects/status/github/weihanglo/surf?svg=true)](https://ci.appveyor.com/project/weihanglo/surf) [![Dependency status](https://deps.rs/repo/github/weihanglo/surf/status.svg)](https://deps.rs/repo/github/weihanglo/surf) [![GitHub license](https://img.shields.io/github/license/weihanglo/surf.svg)](https://github.com/weihanglo/surf/blob/master/LICENSE) [![Lines of code](https://tokei.rs/b1/github/weihanglo/surf?category=code)](https://github.com/weihanglo/surf)
+[![Travis build status](https://travis-ci.org/weihanglo/surf.svg?branch=master)](https://travis-ci.org/weihanglo/surf) [![Appveyor build status](https://ci.appveyor.com/api/projects/status/github/weihanglo/surf?svg=true)](https://ci.appveyor.com/project/weihanglo/surf) [![Dependency status](https://deps.rs/repo/github/weihanglo/surf/status.svg)](https://deps.rs/repo/github/weihanglo/surf) [![Lines of code](https://tokei.rs/b1/github/weihanglo/surf?category=code)](https://github.com/weihanglo/surf)
 
 [Surf][surf] is a simple-to-use command-line tool serving static files for you.
 
@@ -102,6 +102,9 @@ Surf is built on the top of awesome Rust community. Thanks for all Rust and crat
 
 ## License
 
-[The MIT License (MIT)](LICENSE)
+Surf is licensed under either of
 
-Copyright © 2018 Weihang Lo
+- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
