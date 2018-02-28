@@ -7,13 +7,13 @@ repository = "https://github.com/weihanglo/surf"
 readme = "README.md"
 keywords = ["cli"]
 categories = ["command-line-utilities", "command-line-interface"]
-license = "MIT/Apache-2.0"
+license = "Apache-2.0/MIT"
 
 [dependencies]
 # Command-line
 clap = "2.29"
 
-# Server-related
+# Server
 futures = "0.1"
 hyper = "0.11"
 mime_guess = "2.0.0-alpha"
@@ -28,4 +28,4 @@ flate2 = { version = "1.0", features = ["rust_backend"], default-features = fals
 tera = "0.11"
 serde = "1.0" # For tera serializing variables to template.
 serde_derive = "1.0"
-
+ignore = "0.4" # Respect to .gitignore while listing directories.

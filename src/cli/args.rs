@@ -20,6 +20,8 @@ pub struct Args {
     pub cors: bool,
     pub compress: bool,
     pub path: PathBuf,
+    pub all: bool,
+    pub ignore: bool,
 }
 
 impl Default for Args {
@@ -31,6 +33,8 @@ impl Default for Args {
             compress: true,
             cors: false,
             path: env::current_dir().unwrap_or_default(),
+            all: false,
+            ignore: true,
         }
     }
 }
@@ -58,6 +62,8 @@ impl Args {
             }
         };
         let compress = !matches.is_present("unzipped");
+        let all = matches.is_present("all");
+        let ignore = !matches.is_present("no-ignore");
 
         Args {
             address,
@@ -66,6 +72,8 @@ impl Args {
             cors,
             path,
             compress,
+            all,
+            ignore,
             ..Default::default()
         }
     }

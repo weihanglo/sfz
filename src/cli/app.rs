@@ -44,6 +44,15 @@ pub fn build_app() -> App<'static, 'static> {
         .long("unzipped")
         .help("Disable HTTP compression");
 
+    let arg_all = Arg::with_name("all")
+        .short("a")
+        .long("all")
+        .help("Serve hidden and dot (.) files");
+
+    let arg_no_ignore = Arg::with_name("no-ignore")
+        .long("no-ignore")
+        .help("Don't respect gitignore file");
+
     app_from_crate!()
         .about(ABOUT)
         .arg(arg_address)
@@ -52,4 +61,6 @@ pub fn build_app() -> App<'static, 'static> {
         .arg(arg_cors)
         .arg(arg_path)
         .arg(arg_unzipped)
+        .arg(arg_all)
+        .arg(arg_no_ignore)
 }

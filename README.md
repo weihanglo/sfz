@@ -15,7 +15,7 @@
 - Conditional requests
 - Cross-origin resource sharing
 - Automatic HTTP compression (Brotli, Gzip, Deflate)
-- Fast switch between sub directories
+- Respect to `.gitignore` file
 
 ## Installation
 

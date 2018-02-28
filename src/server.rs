@@ -36,6 +36,8 @@ use unicase::Ascii;
 use percent_encoding::percent_decode;
 use tera::{Tera, Context};
 use mime_guess::get_mime_type_opt;
+use ignore::gitignore::Gitignore;
+use ignore::WalkBuilder;
 
 use ::cli::Args;
 use ::http::conditional_requests::{
@@ -72,6 +74,7 @@ pub fn serve(args: Args) {
 
 struct MyService {
     args: Args,
+    gitignore: Gitignore,
 }
 
 impl Service for MyService {
@@ -88,7 +91,11 @@ impl Service for MyService {
 
 impl MyService {
     pub fn new(args: Args) -> Self {
-        Self { args }
+        let gitignore = Gitignore::new(args.path.join(".gitignore")).0;
+        Self {
+            args,
+            gitignore,
+        }
     }
 
     /// Request handler for `MyService`.
@@ -120,8 +127,16 @@ impl MyService {
             ]));
         }
 
-        // Handle 404 NotFound
-        if !req_path.exists() {
+        // 404 NotFound for
+        //
+        // 1. path does not exist
+        // 2. is a hidden path without `--all` flag
+        // 3. ignore by .gitignore behind `--no-ignore` flag
+        if !req_path.exists()
+            || (!self.args.all && is_hidden(&req_path))
+            || (self.args.ignore &&
+                self.gitignore.matched(&req_path, req_path.is_dir()).is_ignore()
+            ) {
             let body = "Not Found";
             headers.set(ContentLength(body.len() as u64));
             return response
@@ -136,7 +151,12 @@ impl MyService {
 
         // Extra process for serving files.
         if req_path.is_dir() {
-            body = handle_dir(&req_path, &self.args.path);
+            body = handle_dir(
+                &req_path,
+                &self.args.path,
+                self.args.all,
+                self.args.ignore,
+            );
         } else {
             // Cache-Control.
             headers.set(CacheControl(vec![
@@ -224,13 +244,28 @@ impl MyService {
     }
 }
 
+// Detect is file hidden.
+fn is_hidden(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|s| s.to_str())
+        .map(|s| s.starts_with("."))
+        .unwrap_or(false)
+}
+
 /// Send a HTML page of all files under the path.
 ///
 /// # Parameters
 ///
 /// * `dir_path` - Directory to be listed files.
 /// * `base_path` - The base path resolving all filepaths under `dir_path`.
-fn handle_dir(dir_path: &Path, base_path: &Path) -> io::Result<Vec<u8>> {
+/// * `show_all` - Whether to show hidden and 'dot' files.
+/// * `with_ignore` - Whether to respet gitignore files.
+fn handle_dir(
+    dir_path: &Path,
+    base_path: &Path,
+    show_all: bool,
+    with_ignore: bool,
+) -> io::Result<Vec<u8>> {
     // Prepare dirname of current dir relative to base path.
     let (dir_name, paths) = {
         let dir_name = base_path.file_name().unwrap_or_default()
@@ -252,35 +287,45 @@ fn handle_dir(dir_path: &Path, base_path: &Path) -> io::Result<Vec<u8>> {
         (dir_name, paths)
     };
 
-    let files_iter = dir_path.read_dir()?
-        .map(|entry| entry.unwrap().path())
-        .map(|abs_path| {
+    let files_iter = WalkBuilder::new(dir_path)
+        .standard_filters(false) // Disable all standard filters.
+        .git_ignore(with_ignore)
+        .hidden(!show_all) // Filter out hidden entries on demand.
+        .max_depth(Some(1)) // Do not traverse subpaths.
+        .build()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| dir_path != entry.path()) // Exclude `.`
+        .map(|entry| {
+            let abs_path = entry.path();
+            // Exclude directories only (include symlinks).
             let is_file = !abs_path.is_dir();
+            // Get relative path.
             let rel_path = abs_path.strip_prefix(base_path).unwrap();
-            let name = rel_path
-                .file_name().unwrap()
-                .to_str().unwrap()
+            let name = rel_path.file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
                 .to_owned();
             // Construct hyperlink.
-            let path = format!("/{}", rel_path.to_str().unwrap());
+            let path = format!("/{}", rel_path.to_str().unwrap_or_default());
             FileItem { name, path, is_file }
         });
 
     let mut files = if base_path == dir_path {
+        // CWD == base dir
         files_iter.collect::<Vec<_>>()
     } else {
-        // Item for popping back to parent directory.
+        // CWD == sub dir of base dir
+        // Append an item for popping back to parent directory.
         let path = format!("/{}", dir_path
             .parent().unwrap()
             .strip_prefix(base_path).unwrap()
             .to_str().unwrap()
         );
-        let item = FileItem {
+        vec![FileItem {
             name: "..".to_owned(),
             path,
             is_file: false,
-        };
-        vec![item].into_iter().chain(files_iter).collect::<Vec<_>>()
+        }].into_iter().chain(files_iter).collect::<Vec<_>>()
     };
     // Sort files (dir-first and lexicographic ordering).
     files.sort_unstable();

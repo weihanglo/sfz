@@ -19,6 +19,7 @@ extern crate serde;
 extern crate serde_derive;
 extern crate flate2;
 extern crate brotli;
+extern crate ignore;
 
 mod server;
 mod http;
