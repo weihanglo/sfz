@@ -26,7 +26,7 @@
 If you are a Rust programmer, you can install surf directly from GitHub via [Cargo][cargo].
 
 ```bash
-$ cargo install --git https://github.com/weihanglo/surf
+cargo install --git https://github.com/weihanglo/surf
 ```
 
 [cargo]: https://doc.rust-lang.org/cargo/
@@ -71,15 +71,18 @@ surf /usr/local
 
 ### Flags and Options
 
-Surf is aim to be simple but configurable. Here is a list of available options:
+Surf aims to be simple but configurable. Here is a list of available options:
 
-| Option         | Default Value             |
-| :------------- | ------------------------  |
-| Base directory | current working directory |
-| Port           | 8888                      |
-| Address        | 127.0.0.1                 |
-| CORS           | `false`                   |
-| Caching        | 0 second                  |
+| Option             | Default Value             |
+| :----------------- | ------------------------- |
+| Base directory     | current working directory |
+| Address            | 127.0.0.1                 |
+| Port               | 8888                      |
+| CORS               | `false`                   |
+| Caching            | 0 second                  |
+| HTTP compression   | `true`                    |
+| Serve hidden files | `false`                   |
+| Respect .gitignore | `true`                    |
 
 For more infomation, run following command:
 
