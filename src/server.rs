@@ -49,7 +49,7 @@ use ::http::range_requests::{
     is_satisfiable_range,
     extract_range,
 };
-use ::http::content_codings::{
+use ::http::content_encoding::{
     get_prior_encoding,
     compress,
 };

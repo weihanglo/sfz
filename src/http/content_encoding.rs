@@ -10,7 +10,7 @@ use std::cmp::Ordering;
 use std::io::{self, BufReader};
 
 use hyper::Request;
-use hyper::header::{AcceptEncoding, Encoding, QualityItem};
+use hyper::header::{AcceptEncoding, Encoding, QualityItem, q};
 use brotli;
 use flate2::Compression;
 use flate2::read::{GzEncoder, DeflateEncoder};
@@ -47,7 +47,11 @@ pub fn get_prior_encoding(req: &Request) -> Encoding {
         .and_then(|accept_encoding| {
             let mut vec = vec![];
             let AcceptEncoding(ref encodings) = *accept_encoding;
+            let zero = q(0); // Zero means unacceptable.
             for encoding in encodings {
+                if encoding.quality <= zero {
+                    continue;
+                }
                 match encoding.item {
                     Encoding::Brotli | Encoding::Gzip | Encoding::Deflate => {
                         vec.push(encoding);
@@ -122,7 +126,7 @@ mod t_sort {
 mod t_prior {
     use super::*;
     use hyper::Method;
-    use hyper::header::qitem;
+    use hyper::header::{q, qitem};
 
     #[test]
     fn no_accept_encoding_header() {
@@ -154,6 +158,16 @@ mod t_prior {
         ]);
         req.headers_mut().set(accept_encoding);
         assert_eq!(get_prior_encoding(&req), Encoding::Brotli);
+    }
+
+    #[test]
+    fn filter_out_zero_quality() {
+        let mut req = Request::new(Method::Get, "localhost".parse().unwrap());
+        let accept_encoding = AcceptEncoding(vec![
+            QualityItem { item: Encoding::Brotli, quality: q(0) }
+        ]);
+        req.headers_mut().set(accept_encoding);
+        assert_eq!(get_prior_encoding(&req), Encoding::Identity);
     }
 }
 
