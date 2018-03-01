@@ -37,3 +37,12 @@ serde_derive = "1.0"
 ignore = "0.4" # Respect to .gitignore while listing directories.
 
 # Miscellaneous
+
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = 'unwind'
