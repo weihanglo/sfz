@@ -1,13 +1,19 @@
 [package]
-name = "surf"
+name = "sfz"
 version = "0.0.1"
 authors = ["Weihang Lo <weihanglotw@gmail.com>"]
 description = "A simple static file serving command-line tool."
-repository = "https://github.com/weihanglo/surf"
+repository = "https://github.com/weihanglo/sfz"
 readme = "README.md"
-keywords = ["cli"]
-categories = ["command-line-utilities", "command-line-interface"]
+keywords = ["cli", "server", "file", "directory", "static"]
+categories = ["command-line-utilities", "web-programming"]
 license = "Apache-2.0/MIT"
+
+[badges]
+
+appveyor = { repository = "weihanglo/sfz" }
+travis-ci = { repository = "weihanglo/sfz" }
+# codecov = { repository = "weihanglo/sfz" }
 
 [dependencies]
 # Command-line
