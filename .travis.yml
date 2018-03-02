@@ -85,7 +85,7 @@ deploy:
   # - Encrypt it: `travis encrypt 0123456789012345678901234567890123456789
   # - Paste the output down here
   api_key:
-    secure: em5I0zBlh1XfrwIbzNWlQ/v71tYKHdRu9mREZPSUQ4RSYyLuSa4mAve0x4TNtU+y7lW47BHKpuUcbcRRjDd5CRmdouYaF6izHSJtHFRYzIczSy8EZQFh6S2A2kXVaoHqNNjOFwjc3fTzKI9mz6b3EBuHLQkfimo7gXaN8GoGoilnSlQOkmUwc3jVyDiXz8mqmZ9kgiSCHILZRE14PnUuRHTKKaNgc+I3dBzsC/9l/YVyyXXftfh5/lAO4B9TIWy6LRPOPnuEjGheFOIf1Qlt3X5J+EiRf2tprdmUstFv1IYNTAy6CQ0tDe/lwcP+tSQZd5TVojldwFvK2P9T/5nIodS0eQrxtycs9vISQe1UvQsatEPWoiuyge05jSp53Pb6vI19gPsuogX0E4q84+mvSgqzVKi0Loc0dnA3IxZ7/mdv3GLYINnIEilPTOxv8nrqWgTMcr44H0/07WHiNLf7RT3KNXmJL1LNeXfhD2u2GrUtDqFqCsthemzbFDLeQb8ptYWxSNMvP25iFum5UI2AAxJRiM+3Q6OHSoRrPd4haNbQ93Rp87L4z5JlU6uH0iI74QsICJaC++vhoJvauAIxrI66hp5M1w3B0RwQ9grsXOn2C8TP0TsAm6K1JnJn3WkfhnoA/H3p5ob/WE6DmTqJk5dx7JuY/FCMtCli6mfybRw=
+    secure: Cpf5+csJdoH8MzR2CJ1WnkRF8aU+292lyukLS9yLJq8rujZZVu8fGxS1IlGSWaQEEJJKygbRIaE02q5BuzA4xfwqOVXcfRiUxVBaeIISXYTE+a/6U7mMw5UAPncUEsz5dNj+SM4eemJ+xpgZIZcgbWF8w9rKlTQ0qBjS1Hk4iLfe/UTYXdhYcibTnfH/2xyeoApwJHN3TWcGITcWtuQ8Lvp6CazHncyJdhqhf1imEbZb4Mw/crzgk8Dv4nw7Dijf/wLTNAhhsZfaSJJsCQyUYoc7uk+ivbxy+G/Ndw9X9GizdYIKI9itnDEBSirANZF1RDW7dlJw+7RJGhsA9Tsj1IkiepVdVQC6IzVm4Jpzx+9d66zWUQG2HsFkscICcmNjnExtaHt3h+Akkdj8gQOmiiEXsivkwt1vlEE/iVcFbX/6TMiH0iHCNMbbb9fh7GY13U1Ql8evDGmQ8w8OP69bmULH3wuWXc7Z9TpEE2uhcs/F69sgRuJLy8G8Dn628SPpJ01NPEQHWtc2+e+ntoRyyvBynSZJzGWRlPvgtxFMVqg52sabduCaH7LGjEt/Sx7V3EjDZ16PCsRwUPwlKHLogRBhm2EcWc+pF9y8JV96CPbiVEESTcBYF3MG7VjibzjCQ5TiMuOebKw+Uiqkiy9M4Ph+SW6iE378rfMa2gLPxKE=
   file_glob: true
   file: $CRATE_NAME-$TRAVIS_TAG-$TARGET.*
   on:
@@ -106,7 +106,7 @@ before_cache:
 branches:
   only:
     # release tags
-    - /^v\d+\.\d+\.\d+.*$/
+    - /^v?\d+\.\d+\.\d+.*$/
     - master
 
 notifications:
