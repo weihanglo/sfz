@@ -15,19 +15,31 @@ environment:
   matrix:
     # Stable channel.
     - TARGET: i686-pc-windows-gnu
+    - TARGET: i686-pc-windows-msvc
+    - TARGET: x86_64-pc-windows-gnu
     - TARGET: x86_64-pc-windows-msvc
 
     # Beta channel.
-    - TARGET: i686-pc-windows-gnu
-      RUST_VERSION: beta
-    - TARGET: x86_64-pc-windows-msvc
-      RUST_VERSION: beta
+    # Disable to reduce CI time
+    # - TARGET: i686-pc-windows-gnu
+    #   RUST_VERSION: beta
+    # - TARGET: i686-pc-windows-msvc
+    #   RUST_VERSION: beta
+    # - TARGET: x86_64-pc-windows-gnu
+    #   RUST_VERSION: beta
+    # - TARGET: x86_64-pc-windows-msvc
+    #   RUST_VERSION: beta
 
-    # Testing other channels
-    - TARGET: x86_64-pc-windows-gnu
-      RUST_VERSION: nightly
-    - TARGET: x86_64-pc-windows-msvc
-      RUST_VERSION: nightly
+    # Nightly channel
+    # Disable to reduce CI time
+    # - TARGET: i686-pc-windows-gnu
+    #   RUST_VERSION: nightly
+    # - TARGET: i686-pc-windows-msvc
+    #   RUST_VERSION: nightly
+    # - TARGET: x86_64-pc-windows-gnu
+    #   RUST_VERSION: nightly
+    # - TARGET: x86_64-pc-windows-msvc
+    #   RUST_VERSION: nightly
 
 install:
   - ps: >-
@@ -49,9 +61,7 @@ test_script:
       cargo build --target %TARGET% &&
       cargo build --target %TARGET% --release &&
       cargo test --target %TARGET% &&
-      cargo test --target %TARGET% --release &&
-      cargo run --target %TARGET% &&
-      cargo run --target %TARGET% --release
+      cargo test --target %TARGET% --release
     )
 
 before_deploy:
@@ -66,7 +76,7 @@ deploy:
   # - Encrypt it. Go to https://ci.appveyor.com/tools/encrypt
   # - Paste the output down here
   auth_token:
-    secure: IieG6BBJ6JtYg7/uq1qWnnujO4TQE7Z3DoEOsfPijmIxLmAR0CRo4wzzkbVnU4Rf
+    secure: M0HVwDXCH3F6PB83zaluqLS1v8iVn71RyfcwTdRvZ/0lwjmKhHPgzzYhLIe8BV/k
   description: ''
   on:
     # TODO Here you can pick which targets will generate binary releases
