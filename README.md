@@ -1,8 +1,8 @@
-# sfz
+# [![sfz](sfz.svg)][sfz]
 
 [![Travis build status](https://travis-ci.org/weihanglo/sfz.svg?branch=master)](https://travis-ci.org/weihanglo/sfz) [![Appveyor build status](https://ci.appveyor.com/api/projects/status/github/weihanglo/sfz?svg=true)](https://ci.appveyor.com/project/weihanglo/sfz) [![Dependency status](https://deps.rs/repo/github/weihanglo/sfz/status.svg)](https://deps.rs/repo/github/weihanglo/sfz) [![Lines of code](https://tokei.rs/b1/github/weihanglo/sfz?category=code)](https://github.com/weihanglo/sfz)
 
-[![sfz](sfz.svg)][sfz], or **S**tatic **F**ile **Z**erver, is a simple command-line tool serving static files for you.
+[sfz][sfz], or **S**tatic **F**ile **Z**erver, is a simple command-line tool serving static files for you.
 
 ![cover](cover.png)
 
