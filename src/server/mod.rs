@@ -231,6 +231,8 @@ impl MyService {
             if res.status() != StatusCode::PartialContent {
                 body = handle_file(path);
             }
+            res.headers_mut().set(last_modified);
+            res.headers_mut().set(etag);
         }
 
         let mut body = body
