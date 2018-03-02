@@ -9,6 +9,7 @@
 use std::io::{self, BufReader};
 use std::fs;
 use std::path::{PathBuf, Path};
+use std::convert::AsRef;
 
 use futures;
 use futures::future::Future;
@@ -129,7 +130,12 @@ impl MyService {
     /// 1. path does not exist
     /// 2. is a hidden path without `--all` flag
     /// 3. ignore by .gitignore behind `--no-ignore` flag
-    fn should_return_not_found(&self, path: &Path, res: &mut Response) -> bool {
+    fn should_return_not_found<P: AsRef<Path>>(
+        &self, 
+        path: P,
+        res: &mut Response
+    ) -> bool {
+        let path = path.as_ref();
         if !path.exists() || 
             (!self.args.all && is_hidden(path)) || 
             (self.args.ignore &&
@@ -264,12 +270,14 @@ impl MyService {
 /// * `base_path` - The base path resolving all filepaths under `dir_path`.
 /// * `show_all` - Whether to show hidden and 'dot' files.
 /// * `with_ignore` - Whether to respet gitignore files.
-fn handle_dir(
-    dir_path: &Path,
-    base_path: &Path,
+fn handle_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
+    dir_path: P1,
+    base_path: P2,
     show_all: bool,
     with_ignore: bool,
 ) -> io::Result<Vec<u8>> {
+    let base_path = base_path.as_ref();
+    let dir_path = dir_path.as_ref();
     // Prepare dirname of current dir relative to base path.
     let (dir_name, paths) = {
         let dir_name = base_path.file_name().unwrap_or_default()
@@ -346,7 +354,7 @@ fn handle_dir(
 }
 
 /// Send a buffer of file to client.
-fn handle_file(file_path: &Path) -> io::Result<Vec<u8>> {
+fn handle_file<P: AsRef<Path>>(file_path: P) -> io::Result<Vec<u8>> {
     use std::io::prelude::*;
     let f = fs::File::open(file_path)?;
     let mut buffer = Vec::new();
@@ -360,8 +368,8 @@ fn handle_file(file_path: &Path) -> io::Result<Vec<u8>> {
 ///
 /// * `file_path` - Path to the file that is going to send.
 /// * `range` - Tuple of `(start, end)` range (inclusive).
-fn handle_file_with_range(
-    file_path: &Path,
+fn handle_file_with_range<P: AsRef<Path>>(
+    file_path: P,
     range: (u64, u64),
 ) -> io::Result<Vec<u8>> {
     use std::io::SeekFrom;
@@ -381,7 +389,8 @@ fn handle_file_with_range(
 
 /// Guess MIME type from a path.
 /// Return `text/html` if the path refers to a directory.
-fn guess_mime_type(path: &Path) -> mime::Mime {
+fn guess_mime_type<P: AsRef<Path>>(path: P) -> mime::Mime {
+    let path = path.as_ref();
     if path.is_dir() {
         mime::TEXT_HTML_UTF_8
     } else {
@@ -404,8 +413,9 @@ fn is_media_type(mime: &mime::Mime) -> bool {
 }
 
 // Detect is file hidden.
-fn is_hidden(path: &Path) -> bool {
-    path.file_name()
+fn is_hidden<P: AsRef<Path>>(path: P) -> bool {
+    path.as_ref()
+        .file_name()
         .and_then(|s| s.to_str())
         .map(|s| s.starts_with("."))
         .unwrap_or(false)
