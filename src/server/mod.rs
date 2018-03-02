@@ -25,7 +25,6 @@ use hyper::header::{
     ContentType,
     ETag,
     EntityTag,
-    Headers,
     LastModified,
     Range,
     RangeUnit,
@@ -98,51 +97,67 @@ impl MyService {
         }
     }
 
-    /// Request handler for `MyService`.
-    fn handle_request(&self, req: Request) -> Response {
-        let req_path = {
-            // Remove leading slash.
-            let path = &req.path()[1..].as_bytes();
-            // URI percent decode.
-            let path = percent_decode(path)
-                .decode_utf8()
-                .unwrap()
-                .into_owned();
-            self.args.path.join(path)
-        };
+    /// Construct file path from request path.
+    fn file_path_from_path(&self, path: &str) -> PathBuf {
+        // Remove leading slash.
+        let path = path[1..].as_bytes();
+        // URI percent decode.
+        let path = percent_decode(path)
+            .decode_utf8()
+            .unwrap()
+            .into_owned();
+        self.args.path.join(path)
+    }
 
-        // Construct response.
-        let mut response = Response::new();
-        let mut headers = Headers::new();
-        headers.set(Server::new(SERVER_VERSION));
-
-        // CORS headers
+    /// Enable cross-origin resource sharing for given response.
+    fn enable_cors(&self, res: &mut Response) {
         if self.args.cors {
-            headers.set(AccessControlAllowOrigin::Any);
-            headers.set(AccessControlAllowHeaders(vec![
+            res.headers_mut().set(AccessControlAllowOrigin::Any);
+            res.headers_mut().set(AccessControlAllowHeaders(vec![
                 Ascii::new("Range".to_owned()),
                 Ascii::new("Content-Type".to_owned()),
                 Ascii::new("Accept".to_owned()),
                 Ascii::new("Origin".to_owned()),
             ]));
         }
+    }
 
-        // 404 NotFound for
-        //
-        // 1. path does not exist
-        // 2. is a hidden path without `--all` flag
-        // 3. ignore by .gitignore behind `--no-ignore` flag
-        if !req_path.exists()
-            || (!self.args.all && is_hidden(&req_path))
-            || (self.args.ignore &&
-                self.gitignore.matched(&req_path, req_path.is_dir()).is_ignore()
+    /// Determine critera if the file should be served or not (404 NotFound).
+    ///
+    /// 404 NotFound for
+    ///
+    /// 1. path does not exist
+    /// 2. is a hidden path without `--all` flag
+    /// 3. ignore by .gitignore behind `--no-ignore` flag
+    fn should_return_not_found(&self, path: &Path, res: &mut Response) -> bool {
+        if !path.exists() || 
+            (!self.args.all && is_hidden(path)) || 
+            (self.args.ignore &&
+                self.gitignore.matched(path, path.is_dir()).is_ignore()
             ) {
             let body = "Not Found";
-            headers.set(ContentLength(body.len() as u64));
-            return response
-                .with_status(StatusCode::NotFound)
-                .with_headers(headers)
-                .with_body(body)
+            res.headers_mut().set(ContentLength(body.len() as u64));
+            res.set_status(StatusCode::NotFound);
+            res.set_body(body);
+            return true
+        }
+        false
+    }
+
+    /// Request handler for `MyService`.
+    fn handle_request(&self, req: Request) -> Response {
+        let path = &self.file_path_from_path(req.path());
+
+        // Construct response.
+        let mut res = Response::new();
+        res.headers_mut().set(Server::new(SERVER_VERSION));
+
+        // CORS headers
+        self.enable_cors(&mut res);
+
+        // Check critera if the file cannot be served (404 NotFound)
+        if self.should_return_not_found(path, &mut res) {
+            return res
         }
 
         // Prepare response body.
@@ -150,21 +165,21 @@ impl MyService {
         let mut body: io::Result<Vec<u8>> = Ok(vec![]);
 
         // Extra process for serving files.
-        if req_path.is_dir() {
+        if path.is_dir() {
             body = handle_dir(
-                &req_path,
+                path,
                 &self.args.path,
                 self.args.all,
                 self.args.ignore,
             );
         } else {
             // Cache-Control.
-            headers.set(CacheControl(vec![
+            res.headers_mut().set(CacheControl(vec![
                 CacheDirective::Public,
                 CacheDirective::MaxAge(self.args.cache),
             ]));
             // Last-Modified-Time from file metadata _mtime_.
-            let (mtime, size) = fs::metadata(&req_path)
+            let (mtime, size) = fs::metadata(path)
                 .map(|meta| (meta.modified().unwrap(), meta.len()))
                 .unwrap();
             let last_modified = LastModified(mtime.into());
@@ -179,20 +194,15 @@ impl MyService {
 
             // Validate preconditions of conditional requests.
             if is_precondition_failed(&req, &etag, &last_modified) {
-                return response
-                    .with_status(StatusCode::PreconditionFailed)
-                    .with_headers(headers)
+                return res.with_status(StatusCode::PreconditionFailed)
             }
 
             // Validate cache freshness.
             if is_fresh(&req, &etag, &last_modified) {
-                return response
-                    .with_status(StatusCode::NotModified)
-                    .with_headers(headers)
+                return res.with_status(StatusCode::NotModified)
             }
 
             // Range Request support.
-            let mut is_range_request = false;
             if let Some(range) = req.headers().get::<Range>() {
                 match (
                     is_range_fresh(&req, &etag, &last_modified),
@@ -200,12 +210,11 @@ impl MyService {
                 ) {
                     (true, Some(content_range)) => {
                         // 206 Partial Content.
-                        is_range_request = true;
                         if let Some(range) = extract_range(&content_range) {
-                            body = handle_file_with_range(&req_path, range);
+                            body = handle_file_with_range(path, range);
                         }
-                        headers.set(content_range);
-                        response.set_status(StatusCode::PartialContent);
+                        res.headers_mut().set(content_range);
+                        res.set_status(StatusCode::PartialContent);
                     }
                     // Respond entire entity if Range header contains
                     // unsatisfiable range.
@@ -213,43 +222,38 @@ impl MyService {
                 }
             }
 
-            if !is_range_request {
-                body = handle_file(&req_path);
+            if res.status() != StatusCode::PartialContent {
+                body = handle_file(path);
             }
         }
 
-        let mut body = body.unwrap_or_else(|e| Vec::from(format!("Error: {}", e)));
+        let mut body = body
+            .unwrap_or_else(|e| Vec::from(format!("Error: {}", e)));
+        let mime_type = guess_mime_type(path);
 
         // Deal with compression.
-        if self.args.compress {
+        // Prevent compression on partial responses and media contents.
+        if self.args.compress &&
+            res.status() != StatusCode::PartialContent && 
+            !is_media_type(&mime_type) {
             let encoding = get_prior_encoding(&req);
             if let Ok(buf) = compress(&body, &encoding) {
                 body = buf;
                 // Representation varies, so responds with a `Vary` header.
-                headers.set(ContentEncoding(vec![encoding]));
-                headers.set(Vary::Items(vec![
+                res.headers_mut().set(ContentEncoding(vec![encoding]));
+                res.headers_mut().set(Vary::Items(vec![
                     Ascii::new("Accept-Encoding".to_owned())
                 ]));
             }
         }
 
         // Common headers
-        headers.set(AcceptRanges(vec![RangeUnit::Bytes]));
-        headers.set(ContentType(guess_mime_type(&req_path)));
-        headers.set(ContentLength(body.len() as u64));
+        res.headers_mut().set(AcceptRanges(vec![RangeUnit::Bytes]));
+        res.headers_mut().set(ContentType(mime_type));
+        res.headers_mut().set(ContentLength(body.len() as u64));
 
-        response
-            .with_headers(headers)
-            .with_body(body)
+        res.with_body(body)
     }
-}
-
-// Detect is file hidden.
-fn is_hidden(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|s| s.to_str())
-        .map(|s| s.starts_with("."))
-        .unwrap_or(false)
 }
 
 /// Send a HTML page of all files under the path.
@@ -331,12 +335,12 @@ fn handle_dir(
     files.sort_unstable();
 
     // Render page with Tera template engine.
-    let mut context = Context::new();
-    context.add("files", &files);
-    context.add("dir_name", &dir_name);
-    context.add("paths", &paths);
-    context.add("style", include_str!("static/style.css"));
-    let page = Tera::one_off(include_str!("static/index.html"), &context, true)
+    let mut ctx = Context::new();
+    ctx.add("files", &files);
+    ctx.add("dir_name", &dir_name);
+    ctx.add("paths", &paths);
+    ctx.add("style", include_str!("style.css"));
+    let page = Tera::one_off(include_str!("index.html"), &ctx, true)
         .unwrap_or_else(|e| format!("500 Internal server error: {}", e));
     Ok(Vec::from(page))
 }
@@ -383,10 +387,26 @@ fn guess_mime_type(path: &Path) -> mime::Mime {
     } else {
         match path.extension() {
             Some(ext) => {
-                get_mime_type_opt(ext.to_str().unwrap_or(""))
+                get_mime_type_opt(ext.to_str().unwrap_or_default())
                     .unwrap_or(mime::TEXT_PLAIN_UTF_8)
             }
             None => mime::TEXT_PLAIN_UTF_8,
         }
     }
+}
+
+/// Detect if MIME type is `video/*` or `audio/*`
+fn is_media_type(mime: &mime::Mime) -> bool {
+    match mime.type_() {
+        mime::VIDEO | mime::AUDIO  => true,
+        _ => false,
+    }
+}
+
+// Detect is file hidden.
+fn is_hidden(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|s| s.to_str())
+        .map(|s| s.starts_with("."))
+        .unwrap_or(false)
 }

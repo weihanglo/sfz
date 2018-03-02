@@ -32,6 +32,6 @@ fn main() {
     let app = build_app();
     let args = Args::parse(app.get_matches());
 
-    println!("Files serve on {}", args.address());
+    println!("Files serve on http://{}", args.address());
     serve(args);
 }
