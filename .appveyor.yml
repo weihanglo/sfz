@@ -92,10 +92,10 @@ cache:
 
 skip_commits:
   files:
-    - *.md
-    - .github/*
-    - .travis.yml
-    - docs/*
+    - '*.md'
+    - '.github/*'
+    - '.travis.yml'
+    - 'docs/*'
 
 branches:
   only:
