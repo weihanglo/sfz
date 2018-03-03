@@ -12,12 +12,25 @@ use std::time::SystemTime;
 use hyper::mime::{self, Mime};
 use mime_guess::guess_mime_type_opt;
 
+/// Indicate that a path is a normal file/dir or a symlink to another path/dir.
+///
+/// This enum is serializable in order to rendering with Tera template engine.
+/// And the order of enum variants is deremined to ensure sorting precedence.
+#[derive(Debug, Serialize, Eq, PartialEq, Ord, PartialOrd)]
+pub enum PathType {
+    Dir,
+    SymlinkDir,
+    File,
+    SymlinkFile,
+}
+
 pub trait PathExt {
     fn mime(&self) -> Option<Mime>;
     fn is_hidden(&self) -> bool;
     fn mtime(&self) -> SystemTime;
     fn filename_str(&self) -> &str;
     fn size(&self) -> u64;
+    fn type_(&self) -> PathType;
 }
 
 impl PathExt for Path {
@@ -54,6 +67,26 @@ impl PathExt for Path {
             .and_then(|s| s.to_str())
             .unwrap_or_default()
     }
+
+    /// Determine given path is a normal file/directory or a symlink.
+    fn type_(&self) -> PathType {
+        if let Ok(meta) = self.symlink_metadata() {
+            return if meta.file_type().is_symlink() {
+                if self.is_dir() {
+                    PathType::SymlinkDir
+                } else {
+                    PathType::SymlinkFile
+                }
+            } else {
+                if self.is_dir() {
+                    PathType::Dir
+                } else {
+                    PathType::File
+                }
+            }
+        }
+        PathType::File
+    }
 }
 
 pub trait SystemTimeExt {
@@ -82,7 +115,6 @@ impl MimeExt for Mime {
         }
     }
 }
-
 
 #[cfg(test)]
 mod t {

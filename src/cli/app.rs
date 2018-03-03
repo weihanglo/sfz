@@ -53,6 +53,11 @@ pub fn build_app() -> App<'static, 'static> {
         .long("no-ignore")
         .help("Don't respect gitignore file");
 
+    let arg_follow_links = Arg::with_name("follow-links")
+        .short("L")
+        .long("--follow-links")
+        .help("Follow symlinks outside current serving base path");
+
     app_from_crate!()
         .about(ABOUT)
         .arg(arg_address)
@@ -63,4 +68,5 @@ pub fn build_app() -> App<'static, 'static> {
         .arg(arg_unzipped)
         .arg(arg_all)
         .arg(arg_no_ignore)
+        .arg(arg_follow_links)
 }

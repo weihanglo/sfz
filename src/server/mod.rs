@@ -54,14 +54,16 @@ use ::http::content_encoding::{
     get_prior_encoding,
     compress,
 };
-use self::extensions::{MimeExt, PathExt, SystemTimeExt};
+use self::extensions::{MimeExt, PathExt, SystemTimeExt, PathType};
 
 const SERVER_VERSION: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
+/// Serializable `Item` that would be passed to Tera for template rendering.
+/// The order of struct fields is deremined to ensure sorting precedence.
 #[derive(Debug, Serialize, Eq, PartialEq, Ord, PartialOrd)]
-pub struct FileItem {
-    is_file: bool, // Indicate that file is a normal file.
+pub struct Item {
+    path_type: PathType,
     name: String,
     path: String,
 }
@@ -122,18 +124,15 @@ impl MyService {
         }
     }
 
-    /// Determine critera if the file should be served or not (404 NotFound).
+    /// Determine critera if the file should be served or not.
+    /// Return true if the reuqest must be responded with `404 Not Found`.
     ///
     /// 404 NotFound for
     ///
     /// 1. path does not exist
     /// 2. is a hidden path without `--all` flag
     /// 3. ignore by .gitignore behind `--no-ignore` flag
-    fn should_return_not_found<P: AsRef<Path>>(
-        &self, 
-        path: P,
-        res: &mut Response
-    ) -> bool {
+    fn not_found<P: AsRef<Path>>(&self, path: P, res: &mut Response) -> bool {
         let path = path.as_ref();
         if !path.exists() || 
             (!self.args.all && path.is_hidden()) || 
@@ -149,6 +148,29 @@ impl MyService {
         false
     }
 
+    /// Check if requested resource is forbidden after resolving symlink.
+    /// Return true if the request need to be responed with `403 forbidden`.
+    ///
+    /// Unless `--follow-links` flag is on, any resource laid outside current
+    /// serving base path is forbidden.
+    fn forbidden<P: AsRef<Path>>(&self, path: P, res: &mut Response) -> bool {
+        if self.args.follow_links {
+            return false
+        }
+        let path = path.as_ref();
+        let forbidden = match path.canonicalize() {
+            Ok(path) => !path.starts_with(&self.args.path),
+            Err(_) => true,
+        };
+        if forbidden {
+            let body = "Forbidden";
+            res.headers_mut().set(ContentLength(body.len() as u64));
+            res.set_body(body);
+            res.set_status(StatusCode::Forbidden);
+        }
+        forbidden
+    }
+
     /// Request handler for `MyService`.
     fn handle_request(&self, req: Request) -> Response {
         let path = &self.file_path_from_path(req.path());
@@ -161,7 +183,11 @@ impl MyService {
         self.enable_cors(&mut res);
 
         // Check critera if the file cannot be served (404 NotFound)
-        if self.should_return_not_found(path, &mut res) {
+        if self.not_found(path, &mut res) {
+            return res
+        }
+
+        if self.forbidden(path, &mut res) {
             return res
         }
 
@@ -309,14 +335,15 @@ fn handle_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
         .filter(|entry| dir_path != entry.path()) // Exclude `.`
         .map(|entry| {
             let abs_path = entry.path();
-            // Exclude directories only (include symlinks).
-            let is_file = !abs_path.is_dir();
             // Get relative path.
             let rel_path = abs_path.strip_prefix(base_path).unwrap();
-            let name = rel_path.filename_str().to_owned();
-            // Construct hyperlink.
+            // Add "/" prefix to construct absolute hyperlink.
             let path = format!("/{}", rel_path.to_str().unwrap_or_default());
-            FileItem { name, path, is_file }
+            Item {
+                path_type: abs_path.type_(),
+                name: rel_path.filename_str().to_owned(),
+                path,
+            }
         });
 
     let mut files = if base_path == dir_path {
@@ -330,10 +357,10 @@ fn handle_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
             .strip_prefix(base_path).unwrap()
             .to_str().unwrap()
         );
-        vec![FileItem {
+        vec![Item {
             name: "..".to_owned(),
             path,
-            is_file: false,
+            path_type: PathType::Dir,
         }].into_iter().chain(files_iter).collect::<Vec<_>>()
     };
     // Sort files (dir-first and lexicographic ordering).

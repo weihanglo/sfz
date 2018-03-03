@@ -22,6 +22,7 @@ pub struct Args {
     pub path: PathBuf,
     pub all: bool,
     pub ignore: bool,
+    pub follow_links: bool,
 }
 
 impl Default for Args {
@@ -35,6 +36,7 @@ impl Default for Args {
             path: env::current_dir().unwrap_or_default(),
             all: false,
             ignore: true,
+            follow_links: false,
         }
     }
 }
@@ -64,6 +66,7 @@ impl Args {
         let compress = !matches.is_present("unzipped");
         let all = matches.is_present("all");
         let ignore = !matches.is_present("no-ignore");
+        let follow_links = matches.is_present("follow-links");
 
         Args {
             address,
@@ -74,6 +77,7 @@ impl Args {
             compress,
             all,
             ignore,
+            follow_links,
             ..Default::default()
         }
     }
