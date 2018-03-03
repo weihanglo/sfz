@@ -24,6 +24,17 @@ The name **sfz** is derived from a accented note [Sforzando][sforzando] in music
 
 ### Automatic
 
+#### Mac
+
+If you are a **macOS Homebrew** user, you can install sfz from a custom tap:
+
+```bash
+brew tap weihanglo/sfz https://github.com/weihanglo/sfz.git
+brew install sfz
+```
+
+> Disclaimer: Formula on **Linuxbrew** did not fully tested.
+
 #### Cargo
 
 If you are a Rust programmer, you can install sfz directly from GitHub via [Cargo][cargo].
@@ -38,7 +49,9 @@ cargo install --git https://github.com/weihanglo/sfz
 
 #### Prebuilt binaries
 
-Currently unavailable.
+Archives of prebuilt binaries are available on [GitHub Release][gh-release] for Linux, maxOS and Windows. Download a compatible binary for your system. For convenience, make sure you place sfz under $PATh if you want access it from the command line.
+
+[gh-release]: https://github.com/weihanglo/sfz/releases
 
 #### Build from source
 
@@ -76,16 +89,17 @@ sfz /usr/local
 
 sfz aims to be simple but configurable. Here is a list of available options:
 
-| Option             | Default Value             |
-| :----------------- | ------------------------- |
-| Base directory     | current working directory |
-| Address            | 127.0.0.1                 |
-| Port               | 8888                      |
-| CORS               | `false`                   |
-| Caching            | 0 second                  |
-| HTTP compression   | `true`                    |
-| Serve hidden files | `false`                   |
-| Respect .gitignore | `true`                    |
+| Option                  | Default Value             |
+| :---------------------- | ------------------------- |
+| Base directory          | current working directory |
+| Address                 | 127.0.0.1                 |
+| Port                    | 8888                      |
+| Enable CORS             | `false`                   |
+| Caching files for       | 0 second                  |
+| HTTP compression        | `true`                    |
+| Serve hidden files      | `false`                   |
+| Respect to `.gitignore` | `true`                    |
+| Follow symlinks         | `false`                   |
 
 For more infomation, run following command:
 
@@ -99,7 +113,7 @@ Contributions are highly appreciated! Feel free to open issues or send pull requ
 
 ## Credits
 
-sfz was originally inspired by another static serving tool [serve][serve], and its directory-listing UI is mainly borrowed from [GitHub][github].
+sfz was originally inspired by another static serving tool [serve][serve], and sfz's directory-listing UI is mainly borrowed from [GitHub][github].
 
 sfz is built on the top of awesome Rust community. Thanks for all Rust and crates contributors.
 
