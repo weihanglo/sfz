@@ -12,7 +12,7 @@ sudo: required
 env:
   global:
     # TODO Update this to match the name of your project.
-    - CRATE_NAME=sfz
+    - CRATE_NAME: sfz
     - RUST_BACKTRACE: full
 
 matrix:
@@ -66,15 +66,6 @@ matrix:
 before_install:
   - set -e
   - rustup self update
-  - |
-      if [ "$TRAVIS_PULL_REQUEST" != "false" ]; then
-        PR_FIRST=$(curl -s https://github.com/${TRAVIS_REPO_SLUG}/pull/${TRAVIS_PULL_REQUEST}.patch | head -1 | grep -o -E '\b[0-9a-f]{40}\b' | tr -d '\n')
-        TRAVIS_COMMIT_RANGE=$PR_FIRST^..${TRAVIS_COMMIT}
-      fi
-      git diff --name-only $TRAVIS_COMMIT_RANGE | grep -qvE '\.md$|^(docs|\.github)/|\.appveyor.yml$' || {
-        echo "Only docs were updated, stopping build process."
-        travis_terminate 0
-      }
 
 install:
   - sh ci/install.sh

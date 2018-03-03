@@ -1,48 +1,43 @@
 [package]
 name = "sfz"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["Weihang Lo <weihanglotw@gmail.com>"]
 description = "A simple static file serving command-line tool."
+documentation = "https://github.com/weihanglo/sfz"
+homepage = "https://github.com/weihanglo/sfz"
 repository = "https://github.com/weihanglo/sfz"
 readme = "README.md"
-keywords = ["cli", "server", "file", "directory", "static"]
-categories = ["command-line-utilities", "web-programming"]
-license = "Apache-2.0/MIT"
+keywords = ["static", "file", "server", "http", "cli"]
+categories = ["command-line-utilities", "web-programming::http-server"]
+exclude = ["HomebrewFormula"]
+license = "MIT/Apache-2.0"
 
 [badges]
-
 appveyor = { repository = "weihanglo/sfz" }
 travis-ci = { repository = "weihanglo/sfz" }
-# codecov = { repository = "weihanglo/sfz" }
 
 [dependencies]
 # Command-line
-clap = "2.29"
-
+clap = { version = "2.30", features = ["suggestions", "color"], default-features = false }
 # Server
-futures = "0.1"
-hyper = "0.11"
+futures = { version = "0.1", features = ["use_std"], default-features = false }
+hyper = { version = "0.11", default-features = false }
 mime_guess = "2.0.0-alpha"
 percent-encoding = "1.0"
 unicase = "2.1" # Dependency for Hyper CORS headers
-
 # Compression
 brotli = "1.1"
 flate2 = { version = "1.0", features = ["rust_backend"], default-features = false }
-
 # Rendering
 tera = "0.11"
 serde = "1.0" # For tera serializing variables to template.
 serde_derive = "1.0"
 ignore = "0.4" # Respect to .gitignore while listing directories.
 
-# Miscellaneous
+[profile.dev]
+codegen-units = 2
+incremental = true
 
 [profile.release]
-opt-level = 3
-debug = false
-rpath = false
 lto = true
-debug-assertions = false
-codegen-units = 1
-panic = 'unwind'
+panic = "abort"

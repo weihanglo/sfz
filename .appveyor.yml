@@ -90,13 +90,6 @@ cache:
   - C:\Users\appveyor\.cargo\registry
   - target
 
-skip_commits:
-  files:
-    - '*.md'
-    - '.github/*'
-    - '.travis.yml'
-    - 'docs/*'
-
 branches:
   only:
     # Release tags

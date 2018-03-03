@@ -1,10 +1,14 @@
 # [![sfz](.github/sfz.svg)][sfz]
 
-[![Travis build status](https://travis-ci.org/weihanglo/sfz.svg?branch=master)](https://travis-ci.org/weihanglo/sfz) [![Appveyor build status](https://ci.appveyor.com/api/projects/status/github/weihanglo/sfz?svg=true)](https://ci.appveyor.com/project/weihanglo/sfz) [![Dependency status](https://deps.rs/repo/github/weihanglo/sfz/status.svg)](https://deps.rs/repo/github/weihanglo/sfz) [![Lines of code](https://tokei.rs/b1/github/weihanglo/sfz?category=code)](https://github.com/weihanglo/sfz)
+[![](https://img.shields.io/crates/v/sfz.svg)](https://crates.io/crates/sfz)
+[![Linux build status](https://travis-ci.org/weihanglo/sfz.svg?branch=master)](https://travis-ci.org/weihanglo/sfz)
+[![Windows build status](https://ci.appveyor.com/api/projects/status/github/weihanglo/sfz?svg=true)](https://ci.appveyor.com/project/weihanglo/sfz)
+[![Dependency status](https://deps.rs/repo/github/weihanglo/sfz/status.svg)](https://deps.rs/repo/github/weihanglo/sfz)
+[![](https://tokei.rs/b1/github/weihanglo/sfz?category=code)](https://github.com/weihanglo/sfz)
 
 [sfz][sfz], or **S**tatic **F**ile **Z**erver, is a simple command-line tool serving static files for you.
 
-![cover](.github/cover.png)
+![](.github/cover.png)
 
 The name **sfz** is derived from a accented note [Sforzando][sforzando] in music, which meaning “suddenly with force.”
 
@@ -24,11 +28,11 @@ The name **sfz** is derived from a accented note [Sforzando][sforzando] in music
 
 ### Automatic
 
-#### Mac
+#### macOS
 
 If you are a **macOS Homebrew** user, you can install sfz from a custom tap:
 
-```bash
+```shell
 brew tap weihanglo/sfz https://github.com/weihanglo/sfz.git
 brew install sfz
 ```
@@ -37,19 +41,26 @@ brew install sfz
 
 #### Cargo
 
-If you are a Rust programmer, you can install sfz directly from GitHub via [Cargo][cargo].
+If you are a **Rust programmer**, sfz are available on [crates.io][crates.io] via [Cargo][cargo].
 
-```bash
-cargo install --git https://github.com/weihanglo/sfz
+```shell
+cargo install sfz
 ```
 
+You can also install the latest version (or a specific commit) of sfz directly from GitHub.
+
+```shell
+cargo install --git https://github.com/weihanglo/sfz.git
+```
+
+[crates.io]: https://crates.io
 [cargo]: https://doc.rust-lang.org/cargo/
 
 ### Manual
 
 #### Prebuilt binaries
 
-Archives of prebuilt binaries are available on [GitHub Release][gh-release] for Linux, maxOS and Windows. Download a compatible binary for your system. For convenience, make sure you place sfz under $PATh if you want access it from the command line.
+Archives of prebuilt binaries are available on [GitHub Release][gh-release] for Linux, maxOS and Windows. Download a compatible binary for your system. For convenience, make sure you place sfz under $PATH if you want access it from the command line.
 
 [gh-release]: https://github.com/weihanglo/sfz/releases
 
@@ -57,12 +68,12 @@ Archives of prebuilt binaries are available on [GitHub Release][gh-release] for 
 
 sfz is written in Rust. You need to [install Rust][install-rust] in order to compile it.
 
-```bash
+```shell
 $ git clone https://github.com/weihanglo/sfz.git
 $ cd sfz
 $ cargo build --release
 $ ./target/release/sfz --version
-0.1.0
+0.0.2
 ```
 
 [install-rust]: https://www.rust-lang.org/install.html
@@ -71,7 +82,7 @@ $ ./target/release/sfz --version
 
 The simplest way to start serving files is to run this command:
 
-```bash
+```shell
 sfz [FLAGS] [OPTIONS] [path]
 ```
 
@@ -79,7 +90,7 @@ The command above will start serving your current working directory on `127.0.0.
 
 If you want to serve another directory, pass `[path]` positional argument in with either absolute or relaitve path.
 
-```bash
+```shell
 sfz /usr/local
 
 # Serve files under `/usr/local` directory.
@@ -103,7 +114,7 @@ sfz aims to be simple but configurable. Here is a list of available options:
 
 For more infomation, run following command:
 
-```bash
+```shell
 sfz --help
 ```
 
