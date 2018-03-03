@@ -6,6 +6,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+mod extensions;
+
 use std::io::{self, BufReader};
 use std::fs;
 use std::path::{PathBuf, Path};
@@ -35,7 +37,6 @@ use hyper::header::{
 use unicase::Ascii;
 use percent_encoding::percent_decode;
 use tera::{Tera, Context};
-use mime_guess::get_mime_type_opt;
 use ignore::gitignore::Gitignore;
 use ignore::WalkBuilder;
 
@@ -53,13 +54,14 @@ use ::http::content_encoding::{
     get_prior_encoding,
     compress,
 };
+use self::extensions::{MimeExt, PathExt, SystemTimeExt};
 
 const SERVER_VERSION: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, Serialize, Eq, PartialEq, Ord, PartialOrd)]
 pub struct FileItem {
-    is_file: bool, // Indicate that file is a directory.
+    is_file: bool, // Indicate that file is a normal file.
     name: String,
     path: String,
 }
@@ -92,10 +94,7 @@ impl Service for MyService {
 impl MyService {
     pub fn new(args: Args) -> Self {
         let gitignore = Gitignore::new(args.path.join(".gitignore")).0;
-        Self {
-            args,
-            gitignore,
-        }
+        Self { args, gitignore }
     }
 
     /// Construct file path from request path.
@@ -137,7 +136,7 @@ impl MyService {
     ) -> bool {
         let path = path.as_ref();
         if !path.exists() || 
-            (!self.args.all && is_hidden(path)) || 
+            (!self.args.all && path.is_hidden()) || 
             (self.args.ignore &&
                 self.gitignore.matched(path, path.is_dir()).is_ignore()
             ) {
@@ -185,18 +184,13 @@ impl MyService {
                 CacheDirective::MaxAge(self.args.cache),
             ]));
             // Last-Modified-Time from file metadata _mtime_.
-            let (mtime, size) = fs::metadata(path)
-                .map(|meta| (meta.modified().unwrap(), meta.len()))
-                .unwrap();
+            let mtime = path.mtime();
+            let size = path.size();
             let last_modified = LastModified(mtime.into());
             // Concatenate _mtime_ and _file size_ to form a strong validator.
-            let etag = {
-                let mtime = mtime
-                    .duration_since(::std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-                ETag(EntityTag::strong(format!("{}-{}", mtime, size)))
-            };
+            let etag = ETag(EntityTag::strong(
+                format!("{}-{}", mtime.timestamp_sec(), size))
+            );
 
             // Validate preconditions of conditional requests.
             if is_precondition_failed(&req, &etag, &last_modified) {
@@ -237,13 +231,18 @@ impl MyService {
 
         let mut body = body
             .unwrap_or_else(|e| Vec::from(format!("Error: {}", e)));
-        let mime_type = guess_mime_type(path);
+        let mime_type = path.mime().unwrap_or_else(|| if path.is_dir() {
+            mime::TEXT_HTML_UTF_8
+        } else {
+            mime::TEXT_PLAIN_UTF_8
+        });
+
 
         // Deal with compression.
         // Prevent compression on partial responses and media contents.
         if self.args.compress &&
             res.status() != StatusCode::PartialContent && 
-            !is_media_type(&mime_type) {
+            !mime_type.is_media() {
             let encoding = get_prior_encoding(&req);
             if let Ok(buf) = compress(&body, &encoding) {
                 body = buf;
@@ -282,8 +281,7 @@ fn handle_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     let dir_path = dir_path.as_ref();
     // Prepare dirname of current dir relative to base path.
     let (dir_name, paths) = {
-        let dir_name = base_path.file_name().unwrap_or_default()
-            .to_str().unwrap();
+        let dir_name = base_path.filename_str();
         let path = dir_path.strip_prefix(base_path).unwrap();
         let path_names = path.iter()
             .map(|s| s.to_str().unwrap());
@@ -315,10 +313,7 @@ fn handle_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
             let is_file = !abs_path.is_dir();
             // Get relative path.
             let rel_path = abs_path.strip_prefix(base_path).unwrap();
-            let name = rel_path.file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or_default()
-                .to_owned();
+            let name = rel_path.filename_str().to_owned();
             // Construct hyperlink.
             let path = format!("/{}", rel_path.to_str().unwrap_or_default());
             FileItem { name, path, is_file }
@@ -387,38 +382,4 @@ fn handle_file_with_range<P: AsRef<Path>>(
         .take(end - start)
         .read_to_end(&mut buffer)?;
     Ok(buffer)
-}
-
-/// Guess MIME type from a path.
-/// Return `text/html` if the path refers to a directory.
-fn guess_mime_type<P: AsRef<Path>>(path: P) -> mime::Mime {
-    let path = path.as_ref();
-    if path.is_dir() {
-        mime::TEXT_HTML_UTF_8
-    } else {
-        match path.extension() {
-            Some(ext) => {
-                get_mime_type_opt(ext.to_str().unwrap_or_default())
-                    .unwrap_or(mime::TEXT_PLAIN_UTF_8)
-            }
-            None => mime::TEXT_PLAIN_UTF_8,
-        }
-    }
-}
-
-/// Detect if MIME type is `video/*` or `audio/*`
-fn is_media_type(mime: &mime::Mime) -> bool {
-    match mime.type_() {
-        mime::VIDEO | mime::AUDIO  => true,
-        _ => false,
-    }
-}
-
-// Detect is file hidden.
-fn is_hidden<P: AsRef<Path>>(path: P) -> bool {
-    path.as_ref()
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(|s| s.starts_with("."))
-        .unwrap_or(false)
 }
