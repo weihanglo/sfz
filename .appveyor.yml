@@ -13,14 +13,14 @@ environment:
   # TODO These are all the build jobs. Adjust as necessary. Comment out what you
   # don't need
   matrix:
+    # Ignore all 32-bit target
     # Stable channel.
-    - TARGET: i686-pc-windows-gnu
-    - TARGET: i686-pc-windows-msvc
+    # - TARGET: i686-pc-windows-msvc
+    # - TARGET: i686-pc-windows-gnu
     - TARGET: x86_64-pc-windows-gnu
     - TARGET: x86_64-pc-windows-msvc
 
     # Beta channel.
-    # Disable to reduce CI time
     # - TARGET: i686-pc-windows-gnu
     #   RUST_VERSION: beta
     # - TARGET: i686-pc-windows-msvc
@@ -31,7 +31,6 @@ environment:
     #   RUST_VERSION: beta
 
     # Nightly channel
-    # Disable to reduce CI time
     # - TARGET: i686-pc-windows-gnu
     #   RUST_VERSION: nightly
     # - TARGET: i686-pc-windows-msvc
@@ -90,6 +89,13 @@ deploy:
 cache:
   - C:\Users\appveyor\.cargo\registry
   - target
+
+skip_commits:
+  files:
+    - *.md
+    - .github/*
+    - .travis.yml
+    - docs/*
 
 branches:
   only:

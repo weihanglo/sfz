@@ -19,26 +19,26 @@ matrix:
   # TODO These are all the build jobs. Adjust as necessary. Comment out what you
   # don't need
   include:
+    # Ignore all 32-bit targets.
     # Stable channel.
-    - env: TARGET=i686-unknown-linux-gnu
-    - env: TARGET=i686-unknown-linux-musl
+    # - env: TARGET=i686-unknown-linux-gnu
+    # - env: TARGET=i686-unknown-linux-musl
     - env: TARGET=x86_64-unknown-linux-gnu
     - env: TARGET=x86_64-unknown-linux-musl
-    - env: TARGET=i686-apple-darwin
-      os: osx
+    # - env: TARGET=i686-apple-darwin
+    #   os: osx
     - env: TARGET=x86_64-apple-darwin
       os: osx
 
     # Beta channel.
-    - env: TARGET=i686-unknown-linux-gnu
-      rust: beta
-    # Disable to reduce CI time
+    # - env: TARGET=i686-unknown-linux-gnu
+    #   rust: beta
     # - env: TARGET=i686-unknown-linux-musl
     #   rust: beta
     # - env: TARGET=x86_64-unknown-linux-gnu
     #   rust: beta
-    # - env: TARGET=x86_64-unknown-linux-musl
-    #   rust: beta
+    - env: TARGET=x86_64-unknown-linux-musl
+      rust: beta
     # - env: TARGET=i686-apple-darwin
     #   os: osx
     #   rust: beta
@@ -47,15 +47,15 @@ matrix:
     #   rust: beta
 
     # Nighly channel.
-    - env: TARGET=i686-unknown-linux-gnu
-      rust: nightly
     # Disable to reduce CI time
+    # - env: TARGET=i686-unknown-linux-gnu
+    #   rust: nightly
     # - env: TARGET=i686-unknown-linux-musl
     #   rust: nightly
     # - env: TARGET=x86_64-unknown-linux-gnu
     #   rust: nightly
-    # - env: TARGET=x86_64-unknown-linux-musl
-    #   rust: nightly
+    - env: TARGET=x86_64-unknown-linux-musl
+      rust: nightly
     # - env: TARGET=i686-apple-darwin
     #   os: osx
     #   rust: nightly
@@ -66,6 +66,15 @@ matrix:
 before_install:
   - set -e
   - rustup self update
+  - |
+      if [ "$TRAVIS_PULL_REQUEST" != "false" ]; then
+        PR_FIRST=$(curl -s https://github.com/${TRAVIS_REPO_SLUG}/pull/${TRAVIS_PULL_REQUEST}.patch | head -1 | grep -o -E '\b[0-9a-f]{40}\b' | tr -d '\n')
+        TRAVIS_COMMIT_RANGE=$PR_FIRST^..$TRAVIS_COMMIT
+      fi
+      git diff --name-only $TRAVIS_COMMIT_RANGE | grep -qvE '\.md$|^(docs|\.github)/|\.appveyor.yml$' || {
+        echo "Only docs were updated, stopping build process."
+        exit
+      }
 
 install:
   - sh ci/install.sh
