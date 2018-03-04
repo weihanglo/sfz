@@ -9,5 +9,5 @@
 mod app;
 mod args;
 
-pub use self::app::build_app;
+pub use self::app::app;
 pub use self::args::Args;

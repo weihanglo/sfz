@@ -10,7 +10,7 @@ use clap::{Arg, App};
 
 const ABOUT: &str = concat!("\n", crate_description!()); // Add extra newline.
 
-pub fn build_app() -> App<'static, 'static> {
+pub fn app() -> App<'static, 'static> {
     let arg_port = Arg::with_name("port")
         .short("p")
         .long("port")

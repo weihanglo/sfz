@@ -21,17 +21,35 @@ extern crate flate2;
 extern crate brotli;
 extern crate ignore;
 
+macro_rules! bail {
+    ($($tt:tt)*) => {
+        return Err(From::from(format!($($tt)*)));
+    }
+}
+
 mod server;
 mod http;
 mod cli;
+mod extensions;
 
-use ::cli::{Args, build_app};
-use ::server::serve;
+
+use std::process;
+use std::error::Error;
+use std::sync::Arc;
+use cli::{Args, app};
+use server::serve;
+
+pub type BoxResult<T> = Result<T, Box<Error>>;
 
 fn main() {
-    let app = build_app();
-    let args = Args::parse(app.get_matches());
-
-    println!("Files served on http://{}", args.address());
-    serve(args);
+    let result = Args::parse(app())
+        .map(Arc::new)
+        .and_then(serve);
+    match result {
+        Ok(_) => (),
+        Err(err) => {
+            eprintln!("{}", err);
+            process::exit(1)
+        }
+    }
 }

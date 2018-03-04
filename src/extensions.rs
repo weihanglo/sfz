@@ -90,12 +90,12 @@ impl PathExt for Path {
 }
 
 pub trait SystemTimeExt {
-    fn timestamp_sec(&self) -> u64;
+    fn timestamp(&self) -> u64;
 }
 
 impl SystemTimeExt for SystemTime {
     /// Convert `SystemTime` to timestamp in seconds.
-    fn timestamp_sec(&self) -> u64 {
+    fn timestamp(&self) -> u64 {
         self.duration_since(::std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs()

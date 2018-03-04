@@ -6,12 +6,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-mod extensions;
-
 use std::io::{self, BufReader};
-use std::fs;
+use std::fs::File;
 use std::path::{PathBuf, Path};
 use std::convert::AsRef;
+use std::str::Utf8Error;
+use std::sync::Arc;
 
 use futures;
 use futures::future::Future;
@@ -40,21 +40,22 @@ use tera::{Tera, Context};
 use ignore::gitignore::Gitignore;
 use ignore::WalkBuilder;
 
-use ::cli::Args;
-use ::http::conditional_requests::{
+use cli::Args;
+use http::conditional_requests::{
     is_fresh,
     is_precondition_failed,
 };
-use ::http::range_requests::{
+use http::range_requests::{
     is_range_fresh,
     is_satisfiable_range,
     extract_range,
 };
-use ::http::content_encoding::{
+use http::content_encoding::{
     get_prior_encoding,
     compress,
 };
-use self::extensions::{MimeExt, PathExt, SystemTimeExt, PathType};
+use BoxResult;
+use extensions::{MimeExt, PathExt, SystemTimeExt, PathType};
 
 const SERVER_VERSION: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
@@ -69,15 +70,20 @@ pub struct Item {
 }
 
 /// Run the server.
-pub fn serve(args: Args) {
-    let server = Http::new().bind(&args.address(), move || {
-        Ok(MyService::new(args.to_owned()))
-    }).unwrap();
-    server.run().unwrap();
+pub fn serve(args: Arc<Args>) -> BoxResult<()> {
+    let address = args.address()?;
+    Http::new()
+        .bind(&address, move || Ok(MyService::new(args.to_owned())))
+        .and_then(|server| {
+            let address = server.local_addr()?;
+            println!("Files served on http://{}", address);
+            server.run()
+        })
+        .or_else(|err| bail!("error: cannot establish server: {}", err))
 }
 
 struct MyService {
-    args: Args,
+    args: Arc<Args>,
     gitignore: Gitignore,
 }
 
@@ -88,27 +94,36 @@ impl Service for MyService {
     type Future = Box<Future<Item=Self::Response, Error=Self::Error>>;
 
     fn call(&self, req: Self::Request) -> Self::Future {
-        let resp = self.handle_request(req);
-        Box::new(futures::future::ok(resp))
+        let res = match self.handle_request(req) {
+            Ok(res) => res,
+            Err(_) => MyService::internal_server_error(Response::new()),
+        };
+        Box::new(futures::future::ok(res))
     }
 }
 
 impl MyService {
-    pub fn new(args: Args) -> Self {
+    pub fn new(args: Arc<Args>) -> Self {
         let gitignore = Gitignore::new(args.path.join(".gitignore")).0;
         Self { args, gitignore }
     }
 
     /// Construct file path from request path.
-    fn file_path_from_path(&self, path: &str) -> PathBuf {
-        // Remove leading slash.
-        let path = path[1..].as_bytes();
-        // URI percent decode.
-        let path = percent_decode(path)
+    ///
+    /// 1. Remove leading slash.
+    /// 2. URI percent decode.
+    fn file_path_from_path(&self, path: &str) -> Result<PathBuf, Utf8Error> {
+        percent_decode(path[1..].as_bytes())
             .decode_utf8()
-            .unwrap()
-            .into_owned();
-        self.args.path.join(path)
+            .map(|path| self.args.path.join(path.into_owned()))
+    }
+
+    /// Enable HTTP cache control (current always enable with max-age=0)
+    fn enable_cache_control(&self, res: &mut Response) {
+        res.headers_mut().set(CacheControl(vec![
+            CacheDirective::Public,
+            CacheDirective::MaxAge(self.args.cache),
+        ]));
     }
 
     /// Enable cross-origin resource sharing for given response.
@@ -124,56 +139,75 @@ impl MyService {
         }
     }
 
-    /// Determine critera if the file should be served or not.
-    /// Return true if the reuqest must be responded with `404 Not Found`.
+    /// Determine if payload should be compressed.
     ///
-    /// 404 NotFound for
+    /// Enable compression when all criteria are met:
     ///
-    /// 1. path does not exist
-    /// 2. is a hidden path without `--all` flag
-    /// 3. ignore by .gitignore behind `--no-ignore` flag
-    fn not_found<P: AsRef<Path>>(&self, path: P, res: &mut Response) -> bool {
-        let path = path.as_ref();
-        if !path.exists() || 
-            (!self.args.all && path.is_hidden()) || 
-            (self.args.ignore &&
-                self.gitignore.matched(path, path.is_dir()).is_ignore()
-            ) {
-            let body = "Not Found";
-            res.headers_mut().set(ContentLength(body.len() as u64));
-            res.set_status(StatusCode::NotFound);
-            res.set_body(body);
-            return true
-        }
-        false
+    /// - `compress` arg is true
+    /// - is not partial responses 
+    /// - is not media contents
+    ///
+    /// # Parameters
+    ///
+    /// * `status` - Current status code prepared to respond.
+    /// * `mime` - MIME type of the payload.
+    fn can_compress(&self, status: StatusCode, mime: &mime::Mime) -> bool {
+        self.args.compress &&
+            status != StatusCode::PartialContent &&
+            !mime.is_media()
     }
 
-    /// Check if requested resource is forbidden after resolving symlink.
-    /// Return true if the request need to be responed with `403 forbidden`.
+    /// Determine critera if given path exists or not.
     ///
-    /// Unless `--follow-links` flag is on, any resource laid outside current
-    /// serving base path is forbidden.
-    fn forbidden<P: AsRef<Path>>(&self, path: P, res: &mut Response) -> bool {
-        if self.args.follow_links {
-            return false
-        }
+    /// A path exists if matches all rules below:
+    ///
+    /// 1. exists
+    /// 2. is not hidden
+    /// 3. is not ignored
+    fn path_exists<P: AsRef<Path>>(&self, path: P) -> bool {
         let path = path.as_ref();
-        let forbidden = match path.canonicalize() {
-            Ok(path) => !path.starts_with(&self.args.path),
-            Err(_) => true,
-        };
-        if forbidden {
-            let body = "Forbidden";
-            res.headers_mut().set(ContentLength(body.len() as u64));
-            res.set_body(body);
-            res.set_status(StatusCode::Forbidden);
+        path.exists() && 
+            !self.path_is_hidden(path) &&
+            !self.path_is_ignored(path)
+    }
+
+    /// Determine if given path is hidden.
+    ///
+    /// A path is considered as hidden if matches all rules below:
+    ///
+    /// 1. `all` arg is false
+    /// 2. is hidden (prefixed with dot `.`)
+    fn path_is_hidden <P: AsRef<Path>>(&self, path: P) -> bool {
+        !self.args.all && path.as_ref().is_hidden()
+    }
+
+    /// Determine if given path is ignored.
+    ///
+    /// A path is considered as ignored if matches all rules below:
+    ///
+    /// 1. `ignore` arg is true
+    /// 2. matches any rules in .gitignore
+    fn path_is_ignored <P: AsRef<Path>>(&self, path: P) -> bool {
+        let path = path.as_ref();
+        self.args.ignore && self
+            .gitignore.matched(path, path.is_dir()).is_ignore()
+    }
+
+    /// Check if requested resource is under directory of basepath.
+    /// 
+    /// The given path must be resolved (canonicalized) to eliminate 
+    /// incorrect path reported by symlink path.
+    fn path_is_under_basepath<P: AsRef<Path>>(&self, path: P) -> bool {
+        let path = path.as_ref();
+        match path.canonicalize() {
+            Ok(path) => path.starts_with(&self.args.path),
+            Err(_) => false,
         }
-        forbidden
     }
 
     /// Request handler for `MyService`.
-    fn handle_request(&self, req: Request) -> Response {
-        let path = &self.file_path_from_path(req.path());
+    fn handle_request(&self, req: Request) -> BoxResult<Response> {
+        let path = &self.file_path_from_path(req.path())?;
 
         // Construct response.
         let mut res = Response::new();
@@ -182,18 +216,20 @@ impl MyService {
         // CORS headers
         self.enable_cors(&mut res);
 
-        // Check critera if the file cannot be served (404 NotFound)
-        if self.not_found(path, &mut res) {
-            return res
+        // Check critera if the path should be ignore (404 NotFound).
+        if !self.path_exists(path) {
+            return Ok(MyService::not_found(res))
         }
 
-        if self.forbidden(path, &mut res) {
-            return res
+        // Unless `follow_links` arg is on, any resource laid outside
+        // current directory of basepath are forbidden.
+        if !self.args.follow_links && !self.path_is_under_basepath(path) {
+            return Ok(MyService::forbidden(res))
         }
 
         // Prepare response body.
-        // Being mutable for further modification.
-        let mut body: io::Result<Vec<u8>> = Ok(vec![]);
+        // Being mutable for further modifications.
+        let mut body: io::Result<Vec<u8>> = Ok(Vec::new());
 
         // Extra process for serving files.
         if path.is_dir() {
@@ -205,27 +241,28 @@ impl MyService {
             );
         } else {
             // Cache-Control.
-            res.headers_mut().set(CacheControl(vec![
-                CacheDirective::Public,
-                CacheDirective::MaxAge(self.args.cache),
-            ]));
+            self.enable_cache_control(&mut res);
+
             // Last-Modified-Time from file metadata _mtime_.
-            let mtime = path.mtime();
-            let size = path.size();
+            let (mtime, size) = (path.mtime(), path.size());
             let last_modified = LastModified(mtime.into());
-            // Concatenate _mtime_ and _file size_ to form a strong validator.
+            // Concatenate _modified time_ and _file size_ to
+            // form a (nearly) strong validator.
             let etag = ETag(EntityTag::strong(
-                format!("{}-{}", mtime.timestamp_sec(), size))
+                format!("{}-{}", mtime.timestamp(), size))
             );
 
             // Validate preconditions of conditional requests.
             if is_precondition_failed(&req, &etag, &last_modified) {
-                return res.with_status(StatusCode::PreconditionFailed)
+                return Ok(MyService::precondition_failed(res))
             }
 
             // Validate cache freshness.
             if is_fresh(&req, &etag, &last_modified) {
-                return res.with_status(StatusCode::NotModified)
+                return Ok(MyService::not_modified(res)
+                  .with_header(last_modified)
+                  .with_header(etag)
+                )
             }
 
             // Range Request support.
@@ -255,20 +292,10 @@ impl MyService {
             res.headers_mut().set(etag);
         }
 
-        let mut body = body
-            .unwrap_or_else(|e| Vec::from(format!("Error: {}", e)));
-        let mime_type = path.mime().unwrap_or_else(|| if path.is_dir() {
-            mime::TEXT_HTML_UTF_8
-        } else {
-            mime::TEXT_PLAIN_UTF_8
-        });
+        let mut body = body?;
+        let mime_type = MyService::path_mime(path);
 
-
-        // Deal with compression.
-        // Prevent compression on partial responses and media contents.
-        if self.args.compress &&
-            res.status() != StatusCode::PartialContent && 
-            !mime_type.is_media() {
+        if self.can_compress(res.status(), &mime_type) {
             let encoding = get_prior_encoding(&req);
             if let Ok(buf) = compress(&body, &encoding) {
                 body = buf;
@@ -285,7 +312,53 @@ impl MyService {
         res.headers_mut().set(ContentType(mime_type));
         res.headers_mut().set(ContentLength(body.len() as u64));
 
-        res.with_body(body)
+        Ok(res.with_body(body))
+    }
+
+    fn path_mime<P: AsRef<Path>>(path: P) -> mime::Mime {
+        let path = path.as_ref();
+        path.mime().unwrap_or_else(|| if path.is_dir() {
+            mime::TEXT_HTML_UTF_8
+        } else {
+            mime::TEXT_PLAIN_UTF_8
+        })
+    }
+
+    /// Generate 304 NotModified response.
+    fn not_modified(res: Response) -> Response {
+        res.with_status(StatusCode::NotModified)
+    }
+
+    /// Generate 403 Forbidden response.
+    fn forbidden(res: Response) -> Response {
+        let body = "403 Forbidden";
+        res.with_status(StatusCode::Forbidden)
+            .with_header(ContentLength(body.len() as u64))
+            .with_body(body)
+    }
+
+    /// Generate 404 NotFound response.
+    fn not_found(res: Response) -> Response {
+        let body = "404 Not Found";
+        res.with_status(StatusCode::NotFound)
+            .with_header(ContentLength(body.len() as u64))
+            .with_body(body)
+    }
+
+    /// Generate 412 PreconditionFailed response.
+    fn precondition_failed(res: Response) -> Response {
+        let body = "412 Precondition Failed";
+        res.with_status(StatusCode::PreconditionFailed)
+            .with_header(ContentLength(body.len() as u64))
+            .with_body(body)
+    }
+
+    /// Generate 500 InternalServerError response.
+    fn internal_server_error(res: Response) -> Response {
+        let body = "500 Internal Server Error";
+        res.with_status(StatusCode::InternalServerError)
+            .with_header(ContentLength(body.len() as u64))
+            .with_body(body)
     }
 }
 
@@ -380,7 +453,7 @@ fn handle_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
 /// Send a buffer of file to client.
 fn handle_file<P: AsRef<Path>>(file_path: P) -> io::Result<Vec<u8>> {
     use std::io::prelude::*;
-    let f = fs::File::open(file_path)?;
+    let f = File::open(file_path)?;
     let mut buffer = Vec::new();
     BufReader::new(f).read_to_end(&mut buffer)?;
     Ok(buffer)
@@ -402,7 +475,7 @@ fn handle_file_with_range<P: AsRef<Path>>(
     if end <= start {
         return Err(io::Error::from(io::ErrorKind::InvalidData))
     }
-    let mut f = fs::File::open(file_path)?;
+    let mut f = File::open(file_path)?;
     let mut buffer = Vec::new();
     f.seek(SeekFrom::Start(start))?;
     BufReader::new(f)

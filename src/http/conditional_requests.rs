@@ -6,7 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use hyper::Method;
 use hyper::server::Request;
@@ -19,16 +19,15 @@ use hyper::header::{
     LastModified,
 };
 
+use extensions::SystemTimeExt;
+
 /// Validate precondition of `If-Match` header.
 ///
 /// Note that an origin server MUST use the strong comparison function when
 /// comparing entity-tags for `If-Match`.
 ///
 /// [RFC7232: If-Match](https://tools.ietf.org/html/rfc7232#section-3.1)
-fn check_if_match(
-    etag: &ETag,
-    if_match: &IfMatch,
-) -> bool {
+fn check_if_match(etag: &ETag, if_match: &IfMatch) -> bool {
     match *if_match {
         IfMatch::Any => true,
         IfMatch::Items(ref tags) => {
@@ -43,10 +42,7 @@ fn check_if_match(
 /// entity-tags for `If-None-Match`.
 ///
 /// [RFC7232: If-None-Match](https://tools.ietf.org/html/rfc7232#section-3.2)
-fn check_if_none_match(
-    etag: &ETag,
-    if_none_match: &IfNoneMatch,
-) -> bool {
+fn check_if_none_match(etag: &ETag, if_none_match: &IfNoneMatch) -> bool {
     match *if_none_match {
         IfNoneMatch::Any => false,
         IfNoneMatch::Items(ref tags) => {
@@ -65,15 +61,7 @@ fn check_if_unmodified_since(
     // Convert to seconds to omit subsecs precision.
     let modified: SystemTime = modified.into();
     let since: SystemTime = since.into();
-    let since = since
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let modified = modified
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    modified <= since
+    modified.timestamp() <= since.timestamp()
 }
 
 /// Validate precondition of `If-Modified-Since` header.
