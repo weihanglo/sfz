@@ -16,24 +16,26 @@ pub fn app() -> App<'static, 'static> {
         .long("port")
         .default_value("8888")
         .help("Specify port to listen on")
-        .value_name("PORT");
+        .value_name("port");
 
     let arg_address = Arg::with_name("address")
+        .short("b")
         .long("bind")
         .default_value("127.0.0.1")
         .help("Specify bind address")
-        .value_name("ADDRESS");
+        .value_name("address");
 
     let arg_cors = Arg::with_name("cors")
-        .short("c")
+        .short("C")
         .long("cors")
         .help("Enable Cross-Origin Resource Sharing from any origin (*)");
 
     let arg_cache = Arg::with_name("cache")
+        .short("c")
         .long("cache")
         .default_value("0")
         .help("Specify max-age of HTTP caching in seconds")
-        .value_name("SECONDS");
+        .value_name("seconds");
 
     let arg_path = Arg::with_name("path")
         .default_value(".")
@@ -50,6 +52,7 @@ pub fn app() -> App<'static, 'static> {
         .help("Serve hidden and dot (.) files");
 
     let arg_no_ignore = Arg::with_name("no-ignore")
+        .short("i")
         .long("no-ignore")
         .help("Don't respect gitignore file");
 

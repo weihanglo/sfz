@@ -106,17 +106,17 @@ USAGE:
 
 FLAGS:
     -a, --all             Serve hidden and dot (.) files
-    -c, --cors            Enable Cross-Origin Resource Sharing from any origin (*)
+    -C, --cors            Enable Cross-Origin Resource Sharing from any origin (*)
     -L, --follow-links    Follow symlinks outside current serving base path
     -h, --help            Prints help information
-        --no-ignore       Don't respect gitignore file
+    -i, --no-ignore       Don't respect gitignore file
     -Z, --unzipped        Disable HTTP compression
     -V, --version         Prints version information
 
 OPTIONS:
-        --bind <ADDRESS>     Specify bind address [default: 127.0.0.1]
-        --cache <SECONDS>    Specify max-age of HTTP caching in seconds [default: 0]
-    -p, --port <PORT>        Specify port to listen on [default: 8888]
+    -b, --bind <address>     Specify bind address [default: 127.0.0.1]
+    -c, --cache <seconds>    Specify max-age of HTTP caching in seconds [default: 0]
+    -p, --port <port>        Specify port to listen on [default: 8888]
 
 ARGS:
     <path>    Path to a directory for serving files [default: .]
