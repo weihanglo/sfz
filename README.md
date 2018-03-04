@@ -22,7 +22,7 @@ The name **sfz** is derived from a accented note [Sforzando][sforzando] in music
 - Conditional requests with cache validations
 - Cross-origin resource sharing
 - Automatic HTTP compression (Brotli, Gzip, Deflate)
-- Respect to `.gitignore` file
+- Respect `.gitignore` file
 
 ## Installation
 
@@ -100,22 +100,26 @@ sfz /usr/local
 
 sfz aims to be simple but configurable. Here is a list of available options:
 
-| Option                  | Default Value             |
-| :---------------------- | ------------------------- |
-| Base directory          | current working directory |
-| Address                 | 127.0.0.1                 |
-| Port                    | 8888                      |
-| Enable CORS             | `false`                   |
-| Caching files for       | 0 second                  |
-| HTTP compression        | `true`                    |
-| Serve hidden files      | `false`                   |
-| Respect to `.gitignore` | `true`                    |
-| Follow symlinks         | `false`                   |
+```
+USAGE:
+    sfz [FLAGS] [OPTIONS] [path]
 
-For more infomation, run following command:
+FLAGS:
+    -a, --all             Serve hidden and dot (.) files
+    -c, --cors            Enable Cross-Origin Resource Sharing from any origin (*)
+    -L, --follow-links    Follow symlinks outside current serving base path
+    -h, --help            Prints help information
+        --no-ignore       Don't respect gitignore file
+    -Z, --unzipped        Disable HTTP compression
+    -V, --version         Prints version information
 
-```shell
-sfz --help
+OPTIONS:
+        --bind <ADDRESS>     Specify bind address [default: 127.0.0.1]
+        --cache <SECONDS>    Specify max-age of HTTP caching in seconds [default: 0]
+    -p, --port <PORT>        Specify port to listen on [default: 8888]
+
+ARGS:
+    <path>    Path to a directory for serving files [default: .]
 ```
 
 ## Contributing
