@@ -68,18 +68,16 @@ impl Args {
         if !path.exists() {
             bail!("error: path \"{}\" doesn't exist", path.display());
         }
-        if path.is_absolute() {
-            Ok(path)
+
+        (if path.is_absolute() {
+            path.canonicalize()
         } else {
-            env::current_dir()
-                .map(|p| p.join(&path))
-                .and_then(canonicalize)
-                .or_else(|err| bail!(
-                    "error: failed to access path \"{}\": {}",
-                    path.display(),
-                    err,
-                ))
-        }
+            env::current_dir().map(|p| p.join(&path))
+        }).and_then(canonicalize).or_else(|err| bail!(
+            "error: failed to access path \"{}\": {}",
+            path.display(),
+            err,
+        ))
     }
 
     /// Construct socket address from arguments.
@@ -91,5 +89,42 @@ impl Args {
                 self.port,
                 err,
             ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use tempdir::TempDir;
+
+    fn temp_name() -> &'static str {
+        concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"))
+    }
+
+    #[test]
+    fn parse_absolute_path() {
+        let tmp_dir = TempDir::new(temp_name()).unwrap();
+        let path = tmp_dir.path().join("temp.txt");
+        let path_str = path.to_str().unwrap();
+        assert!(path.is_absolute());
+        // error: No exists
+        assert!(Args::parse_path(path_str).is_err());
+        // create file
+        File::create(&path).unwrap();
+        assert!(Args::parse_path(path_str).is_ok());
+    }
+
+    #[test]
+    fn parse_relative_path() {
+        let tmp_dir = TempDir::new(temp_name()).unwrap();
+        let path = tmp_dir.path().join("temp.txt");
+        let relative_path = path.strip_prefix(tmp_dir.path()).unwrap();
+        let relative_path_str = path.to_str().unwrap();
+        env::set_current_dir(tmp_dir.path()).unwrap();
+        File::create(&relative_path).unwrap();
+        assert!(relative_path.is_relative());
+        // Relative path is ok
+        assert!(Args::parse_path(relative_path_str).is_ok());
     }
 }

@@ -6,8 +6,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::io::{self, BufReader};
-use std::fs::File;
+mod send;
+
+use std::io;
 use std::path::{PathBuf, Path};
 use std::convert::AsRef;
 use std::str::Utf8Error;
@@ -36,9 +37,7 @@ use hyper::header::{
 };
 use unicase::Ascii;
 use percent_encoding::percent_decode;
-use tera::{Tera, Context};
 use ignore::gitignore::Gitignore;
-use ignore::WalkBuilder;
 
 use cli::Args;
 use http::conditional_requests::{
@@ -56,6 +55,7 @@ use http::content_encoding::{
 };
 use BoxResult;
 use extensions::{MimeExt, PathExt, SystemTimeExt, PathType};
+use self::send::{send_dir, send_file, send_file_with_range};
 
 const SERVER_VERSION: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
@@ -233,7 +233,7 @@ impl MyService {
 
         // Extra process for serving files.
         if path.is_dir() {
-            body = handle_dir(
+            body = send_dir(
                 path,
                 &self.args.path,
                 self.args.all,
@@ -274,7 +274,7 @@ impl MyService {
                     (true, Some(content_range)) => {
                         // 206 Partial Content.
                         if let Some(range) = extract_range(&content_range) {
-                            body = handle_file_with_range(path, range);
+                            body = send_file_with_range(path, range);
                         }
                         res.headers_mut().set(content_range);
                         res.set_status(StatusCode::PartialContent);
@@ -286,14 +286,14 @@ impl MyService {
             }
 
             if res.status() != StatusCode::PartialContent {
-                body = handle_file(path);
+                body = send_file(path);
             }
             res.headers_mut().set(last_modified);
             res.headers_mut().set(etag);
         }
 
         let mut body = body?;
-        let mime_type = MyService::path_mime(path);
+        let mime_type = MyService::guess_path_mime(path);
 
         if self.can_compress(res.status(), &mime_type) {
             let encoding = get_prior_encoding(&req);
@@ -315,7 +315,7 @@ impl MyService {
         Ok(res.with_body(body))
     }
 
-    fn path_mime<P: AsRef<Path>>(path: P) -> mime::Mime {
+    fn guess_path_mime<P: AsRef<Path>>(path: P) -> mime::Mime {
         let path = path.as_ref();
         path.mime().unwrap_or_else(|| if path.is_dir() {
             mime::TEXT_HTML_UTF_8
@@ -362,124 +362,196 @@ impl MyService {
     }
 }
 
-/// Send a HTML page of all files under the path.
-///
-/// # Parameters
-///
-/// * `dir_path` - Directory to be listed files.
-/// * `base_path` - The base path resolving all filepaths under `dir_path`.
-/// * `show_all` - Whether to show hidden and 'dot' files.
-/// * `with_ignore` - Whether to respet gitignore files.
-fn handle_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
-    dir_path: P1,
-    base_path: P2,
-    show_all: bool,
-    with_ignore: bool,
-) -> io::Result<Vec<u8>> {
-    let base_path = base_path.as_ref();
-    let dir_path = dir_path.as_ref();
-    // Prepare dirname of current dir relative to base path.
-    let (dir_name, paths) = {
-        let dir_name = base_path.filename_str();
-        let path = dir_path.strip_prefix(base_path).unwrap();
-        let path_names = path.iter()
-            .map(|s| s.to_str().unwrap());
-        let abs_paths = path.iter()
-            .scan(PathBuf::new(), |state, path| {
-                state.push(path);
-                Some(state.to_owned())
-            })
-            .map(|s| format!("/{}", s.to_str().unwrap()));
-        // Tuple structure: (name, path)
-        let paths = vec![(dir_name, String::from("/"))]
-            .into_iter()
-            .chain(path_names.zip(abs_paths))
-            .collect::<Vec<_>>();
-        (dir_name, paths)
-    };
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use tempdir::TempDir;
 
-    let files_iter = WalkBuilder::new(dir_path)
-        .standard_filters(false) // Disable all standard filters.
-        .git_ignore(with_ignore)
-        .hidden(!show_all) // Filter out hidden entries on demand.
-        .max_depth(Some(1)) // Do not traverse subpaths.
-        .build()
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| dir_path != entry.path()) // Exclude `.`
-        .map(|entry| {
-            let abs_path = entry.path();
-            // Get relative path.
-            let rel_path = abs_path.strip_prefix(base_path).unwrap();
-            // Add "/" prefix to construct absolute hyperlink.
-            let path = format!("/{}", rel_path.to_str().unwrap_or_default());
-            Item {
-                path_type: abs_path.type_(),
-                name: rel_path.filename_str().to_owned(),
-                path,
+    impl Default for Args {
+        fn default() -> Self {
+            Self {
+                address: "127.0.0.1".to_owned(),
+                port: 5000,
+                cache: 0,
+                cors: true,
+                compress: true,
+                path: PathBuf::from("."),
+                all: true,
+                ignore: true,
+                follow_links: true,
             }
-        });
-
-    let mut files = if base_path == dir_path {
-        // CWD == base dir
-        files_iter.collect::<Vec<_>>()
-    } else {
-        // CWD == sub dir of base dir
-        // Append an item for popping back to parent directory.
-        let path = format!("/{}", dir_path
-            .parent().unwrap()
-            .strip_prefix(base_path).unwrap()
-            .to_str().unwrap()
-        );
-        vec![Item {
-            name: "..".to_owned(),
-            path,
-            path_type: PathType::Dir,
-        }].into_iter().chain(files_iter).collect::<Vec<_>>()
-    };
-    // Sort files (dir-first and lexicographic ordering).
-    files.sort_unstable();
-
-    // Render page with Tera template engine.
-    let mut ctx = Context::new();
-    ctx.add("files", &files);
-    ctx.add("dir_name", &dir_name);
-    ctx.add("paths", &paths);
-    ctx.add("style", include_str!("style.css"));
-    let page = Tera::one_off(include_str!("index.html"), &ctx, true)
-        .unwrap_or_else(|e| format!("500 Internal server error: {}", e));
-    Ok(Vec::from(page))
-}
-
-/// Send a buffer of file to client.
-fn handle_file<P: AsRef<Path>>(file_path: P) -> io::Result<Vec<u8>> {
-    use std::io::prelude::*;
-    let f = File::open(file_path)?;
-    let mut buffer = Vec::new();
-    BufReader::new(f).read_to_end(&mut buffer)?;
-    Ok(buffer)
-}
-
-/// Send a buffer with specific range.
-///
-/// # Parameters
-///
-/// * `file_path` - Path to the file that is going to send.
-/// * `range` - Tuple of `(start, end)` range (inclusive).
-fn handle_file_with_range<P: AsRef<Path>>(
-    file_path: P,
-    range: (u64, u64),
-) -> io::Result<Vec<u8>> {
-    use std::io::SeekFrom;
-    use std::io::prelude::*;
-    let (start, end) = range; // TODO: handle end - start < 0
-    if end <= start {
-        return Err(io::Error::from(io::ErrorKind::InvalidData))
+        }
     }
-    let mut f = File::open(file_path)?;
-    let mut buffer = Vec::new();
-    f.seek(SeekFrom::Start(start))?;
-    BufReader::new(f)
-        .take(end - start)
-        .read_to_end(&mut buffer)?;
-    Ok(buffer)
+
+    fn bootstrap(args: Args) -> (MyService, Response) {
+        (MyService::new(Arc::new(args)), Response::new())
+    }
+
+    fn temp_name() -> &'static str {
+        concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"))
+    }
+
+    #[test]
+    fn guess_path_mime() {
+        use std::env;
+        let mime_type = MyService::guess_path_mime("file-wthout-extension");
+        assert_eq!(mime_type, mime::TEXT_PLAIN_UTF_8);
+
+        let mime_type = MyService::guess_path_mime(env::home_dir().unwrap());
+        assert_eq!(mime_type, mime::TEXT_HTML_UTF_8);
+    }
+
+    #[test]
+    fn enable_cors() {
+        let args = Args { ..Default::default() };
+        let (service, mut res) = bootstrap(args);
+        service.enable_cors(&mut res);
+        assert_eq!(
+            *res.headers().get::<AccessControlAllowOrigin>().unwrap(),
+            AccessControlAllowOrigin::Any,
+        );
+    }
+
+    #[test]
+    fn disable_cors() {
+        let args = Args { cors: false, ..Default::default() };
+        let (service, mut res) = bootstrap(args);
+        service.enable_cors(&mut res);
+        assert!(!res.headers().has::<AccessControlAllowOrigin>());
+    }
+
+    #[test]
+    fn enable_cache_control() {
+        let args = Args { ..Default::default() };
+        let (service, mut res) = bootstrap(args);
+        service.enable_cache_control(&mut res);
+        assert!(res.headers().has::<CacheControl>());
+    }
+
+    #[test]
+    fn can_compress() {
+        let args = Args { ..Default::default() };
+        let (service, _) = bootstrap(args);
+        assert!(service.can_compress(StatusCode::Ok, &mime::TEXT_PLAIN));
+    }
+
+    #[test]
+    fn cannot_compress() {
+        let args = Args { compress: false, ..Default::default() };
+        let (service, _) = bootstrap(args);
+        assert!(!service.can_compress(StatusCode::Ok, &mime::TEXT_PLAIN));
+
+        let args = Args { ..Default::default() };
+        let (service, _) = bootstrap(args);
+        assert!(!service.can_compress(
+                StatusCode::PartialContent,
+                &mime::STAR_STAR,
+        ));
+        assert!(!service.can_compress(
+            StatusCode::Ok,
+            &"video/*".parse::<mime::Mime>().unwrap(),
+        ));
+        assert!(!service.can_compress(
+            StatusCode::Ok,
+            &"audio/*".parse::<mime::Mime>().unwrap(),
+        ));
+    }
+
+    #[ignore]
+    #[test]
+    fn path_exists() {
+    }
+
+    #[test]
+    fn path_is_hidden() {
+        // A file prefixed with `.` is considered as hidden.
+        let args = Args { all: false, ..Default::default() };
+        let (service, _) = bootstrap(args);
+        assert!(service.path_is_hidden(".a-hidden-file"));
+    }
+
+    #[test]
+    fn path_is_not_hidden() {
+        // `--all` flag is on
+        let args = Args { ..Default::default() };
+        let (service, _) = bootstrap(args);
+        assert!(!service.path_is_hidden(".a-hidden-file"));
+
+        // `--all` flag is off and the file is not prefixed with `.`
+        let args = Args { all: false, ..Default::default() };
+        let (service, _) = bootstrap(args);
+        assert!(!service.path_is_hidden("a-public-file"));
+    }
+
+    #[test]
+    fn path_is_ignored() {
+        let args = Args { ..Default::default() };
+        let (service, _) = bootstrap(args);
+        assert!(!service.path_is_ignored("target"));
+    }
+
+    #[test]
+    fn path_is_not_ignored() {
+        // `--no-ignore` flag is on
+        let args = Args { ignore: false, ..Default::default() };
+        let (service, _) = bootstrap(args);
+        assert!(!service.path_is_ignored("target"));
+
+        // README.md is not ignored.
+        let args = Args { ..Default::default() };
+        let (service, _) = bootstrap(args);
+        assert!(!service.path_is_ignored("README.md"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn path_is_under_basepath() {
+        use std::os::unix::fs::symlink;
+
+        let src_dir = TempDir::new(temp_name()).unwrap();
+        let src_dir = src_dir.path().canonicalize().unwrap();
+        let src_path = src_dir.join("src_file.txt");
+        let _ = File::create(&src_path);
+
+        // Is under service's base path
+        let symlink_path = src_dir.join("symlink");
+        let args = Args { path: src_dir, ..Default::default() };
+        let (service, _) = bootstrap(args);
+        symlink(&src_path, &symlink_path).unwrap();
+        assert!(service.path_is_under_basepath(&symlink_path));
+
+        // Not under base path.
+        let args = Args { ..Default::default() };
+        let (service, _) = bootstrap(args);
+        assert!(!service.path_is_under_basepath(&symlink_path));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn path_is_under_basepath() {
+        use std::os::windows::fs::symlink_file;
+
+        let src_dir = TempDir::new(temp_name()).unwrap();
+        let src_dir = src_dir.path().canonicalize().unwrap();
+        let src_path = src_dir.join("src_file.txt");
+        let _ = File::create(&src_path);
+
+        // Is under service's base path
+        let symlink_path = src_dir.join("symlink");
+        let args = Args { path: src_dir, ..Default::default() };
+        let (service, _) = bootstrap(args);
+        symlink_file(&src_path, &symlink_path).unwrap();
+        assert!(service.path_is_under_basepath(&symlink_path));
+
+        // Not under base path.
+        let args = Args { ..Default::default() };
+        let (service, _) = bootstrap(args);
+        assert!(!service.path_is_under_basepath(&symlink_path));
+    }
+
+    #[ignore]
+    #[test]
+    fn handle_request() {
+    }
 }

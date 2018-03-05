@@ -21,6 +21,9 @@ extern crate flate2;
 extern crate brotli;
 extern crate ignore;
 
+#[cfg(test)]
+extern crate tempdir;
+
 macro_rules! bail {
     ($($tt:tt)*) => {
         return Err(From::from(format!($($tt)*)));

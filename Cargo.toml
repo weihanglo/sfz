@@ -34,6 +34,9 @@ serde = "1.0" # For tera serializing variables to template.
 serde_derive = "1.0"
 ignore = "0.4" # Respect to .gitignore while listing directories.
 
+[dev-dependencies]
+tempdir = "0.3"
+
 [profile.dev]
 codegen-units = 2
 incremental = true
