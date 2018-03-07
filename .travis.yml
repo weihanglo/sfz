@@ -5,6 +5,10 @@ dist: trusty
 language: rust
 services: docker
 sudo: required
+addons:
+  apt:
+    packages:
+      - libssl-dev
 
 # TODO Rust builds on stable by default, this can be
 # overridden on a case by case basis down below.
@@ -37,8 +41,8 @@ matrix:
     #   rust: beta
     # - env: TARGET=x86_64-unknown-linux-gnu
     #   rust: beta
-    - env: TARGET=x86_64-unknown-linux-musl
-      rust: beta
+    #-  env: TARGET=x86_64-unknown-linux-musl
+    #   rust: beta
     # - env: TARGET=i686-apple-darwin
     #   os: osx
     #   rust: beta
@@ -75,6 +79,9 @@ script:
   - bash ci/script.sh
 
 after_script: set +e
+
+after_success:
+  - bash ci/code-coverage.sh
 
 before_deploy:
   - sh ci/before_deploy.sh
