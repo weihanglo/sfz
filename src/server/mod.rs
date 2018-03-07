@@ -402,8 +402,8 @@ mod tests {
         let (service, _) = bootstrap(args);
         let path = "/%E4%BD%A0%E5%A5%BD%E4%B8%96%E7%95%8C";
         assert_eq!(
-            service.file_path_from_path(path).unwrap().to_str().unwrap(),
-            "/storage/你好世界",
+            service.file_path_from_path(path).unwrap(),
+            Path::new("/storage/你好世界")
         );
     }
 
