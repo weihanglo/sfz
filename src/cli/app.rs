@@ -14,14 +14,14 @@ pub fn app() -> App<'static, 'static> {
     let arg_port = Arg::with_name("port")
         .short("p")
         .long("port")
-        .default_value("8888")
+        .default_value("5000")
         .help("Specify port to listen on")
         .value_name("port");
 
     let arg_address = Arg::with_name("address")
         .short("b")
         .long("bind")
-        .default_value("127.0.0.1")
+        .default_value("0.0.0.0")
         .help("Specify bind address")
         .value_name("address");
 
@@ -52,7 +52,7 @@ pub fn app() -> App<'static, 'static> {
         .help("Serve hidden and dot (.) files");
 
     let arg_no_ignore = Arg::with_name("no-ignore")
-        .short("i")
+        .short("I")
         .long("no-ignore")
         .help("Don't respect gitignore file");
 
