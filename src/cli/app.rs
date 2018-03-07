@@ -61,6 +61,11 @@ pub fn app() -> App<'static, 'static> {
         .long("--follow-links")
         .help("Follow symlinks outside current serving base path");
 
+    let arg_render_index = Arg::with_name("render-index")
+        .short("r")
+        .long("--render-index")
+        .help("Render index.html when requesting a directory.");
+
     app_from_crate!()
         .about(ABOUT)
         .arg(arg_address)
@@ -72,4 +77,5 @@ pub fn app() -> App<'static, 'static> {
         .arg(arg_all)
         .arg(arg_no_ignore)
         .arg(arg_follow_links)
+        .arg(arg_render_index)
 }
