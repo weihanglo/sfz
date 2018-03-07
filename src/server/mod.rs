@@ -112,6 +112,7 @@ impl MyService {
     ///
     /// 1. Remove leading slash.
     /// 2. URI percent decode.
+    /// 3. Concatenate base path and requested path.
     fn file_path_from_path(&self, path: &str) -> Result<PathBuf, Utf8Error> {
         percent_decode(path[1..].as_bytes())
             .decode_utf8()
@@ -390,6 +391,20 @@ mod tests {
 
     fn temp_name() -> &'static str {
         concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"))
+    }
+
+    #[test]
+    fn file_path_from_path() {
+        let args = Args { 
+            path: Path::new("/storage").to_owned(), 
+            ..Default::default() 
+        };
+        let (service, _) = bootstrap(args);
+        let path = "/%E4%BD%A0%E5%A5%BD%E4%B8%96%E7%95%8C";
+        assert_eq!(
+            service.file_path_from_path(path).unwrap().to_str().unwrap(),
+            "/storage/你好世界",
+        );
     }
 
     #[test]
