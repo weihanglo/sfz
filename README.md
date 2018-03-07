@@ -111,6 +111,7 @@ FLAGS:
     -L, --follow-links    Follow symlinks outside current serving base path
     -h, --help            Prints help information
     -I, --no-ignore       Don't respect gitignore file
+    -r, --render-index    Render index.html when requesting a directory.
     -Z, --unzipped        Disable HTTP compression
     -V, --version         Prints version information
 
