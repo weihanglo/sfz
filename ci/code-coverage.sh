@@ -7,6 +7,8 @@ main() {
     bash <(curl -s https://codecov.io/bash) &&
     echo "Uploaded code coverage"
 }
-if [[ "$TRAVIS_RUST_VERSION" == stable && $TRAVIS_OS_NAME == linux ]]; then
+
+# Collect code coverage only on linux with musl
+if [[ "$TARGET" == x86_64-unknown-linux-musl ]]; then
     main
 fi

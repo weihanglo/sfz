@@ -1,11 +1,12 @@
 # [![sfz](.github/sfz.svg)][sfz]
 
-[![](https://img.shields.io/crates/v/sfz.svg)](https://crates.io/crates/sfz)
+[![sfz on Crates.io](https://img.shields.io/crates/v/sfz.svg)](https://crates.io/crates/sfz)
+[![Dependency status](https://deps.rs/repo/github/weihanglo/sfz/status.svg)](https://deps.rs/repo/github/weihanglo/sfz)
+
 [![Linux build status](https://travis-ci.org/weihanglo/sfz.svg?branch=master)](https://travis-ci.org/weihanglo/sfz)
 [![Windows build status](https://ci.appveyor.com/api/projects/status/github/weihanglo/sfz?svg=true)](https://ci.appveyor.com/project/weihanglo/sfz)
 [![Code coverage](https://codecov.io/gh/weihanglo/sfz/coverage.svg)](https://codecov.io/gh/weihanglo/sfz)
-[![Dependency status](https://deps.rs/repo/github/weihanglo/sfz/status.svg)](https://deps.rs/repo/github/weihanglo/sfz)
-[![](https://tokei.rs/b1/github/weihanglo/sfz?category=code)](https://github.com/weihanglo/sfz)
+[![Line of code](https://tokei.rs/b1/github/weihanglo/sfz?category=code)](https://github.com/weihanglo/sfz)
 
 [sfz][sfz], or **S**tatic **F**ile **Z**erver, is a simple command-line tool serving static files for you.
 
