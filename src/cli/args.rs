@@ -26,6 +26,7 @@ pub struct Args {
     pub all: bool,
     pub ignore: bool,
     pub follow_links: bool,
+    pub render_index: bool,
 }
 
 impl Args {
@@ -48,6 +49,7 @@ impl Args {
         let all = matches.is_present("all");
         let ignore = !matches.is_present("no-ignore");
         let follow_links = matches.is_present("follow-links");
+        let render_index = matches.is_present("render-index");
 
         Ok(Args {
             address,
@@ -59,6 +61,7 @@ impl Args {
             all,
             ignore,
             follow_links,
+            render_index,
         })
     }
 

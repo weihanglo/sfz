@@ -117,6 +117,11 @@ impl MyService {
         percent_decode(path[1..].as_bytes())
             .decode_utf8()
             .map(|path| self.args.path.join(path.into_owned()))
+            .map(|path| if self.args.render_index && path.is_dir() {
+                path.join("index.html")
+            } else {
+                path
+            })
     }
 
     /// Enable HTTP cache control (current always enable with max-age=0)
@@ -381,6 +386,7 @@ mod tests {
                 all: true,
                 ignore: true,
                 follow_links: true,
+                render_index: true,
             }
         }
     }
@@ -396,6 +402,7 @@ mod tests {
     #[test]
     fn file_path_from_path() {
         let args = Args { 
+            render_index: false,
             path: Path::new("/storage").to_owned(), 
             ..Default::default() 
         };
@@ -404,6 +411,19 @@ mod tests {
         assert_eq!(
             service.file_path_from_path(path).unwrap(),
             Path::new("/storage/你好世界")
+        );
+
+
+        // Return index.html if `--render-index` flag is on.
+        let dir = TempDir::new(temp_name()).unwrap();
+        let args = Args { 
+            path: dir.path().to_owned(),
+            ..Default::default() 
+        };
+        let (service, _) = bootstrap(args);
+        assert_eq!(
+            service.file_path_from_path(".").unwrap(),
+            dir.path().join("index.html"),
         );
     }
 
