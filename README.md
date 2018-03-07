@@ -86,7 +86,7 @@ The simplest way to start serving files is to run this command:
 sfz [FLAGS] [OPTIONS] [path]
 ```
 
-The command above will start serving your current working directory on `127.0.0.1:8888` by default.
+The command above will start serving your current working directory on `0.0.0.0:5000` by default.
 
 If you want to serve another directory, pass `[path]` positional argument in with either absolute or relaitve path.
 
@@ -109,14 +109,14 @@ FLAGS:
     -C, --cors            Enable Cross-Origin Resource Sharing from any origin (*)
     -L, --follow-links    Follow symlinks outside current serving base path
     -h, --help            Prints help information
-    -i, --no-ignore       Don't respect gitignore file
+    -I, --no-ignore       Don't respect gitignore file
     -Z, --unzipped        Disable HTTP compression
     -V, --version         Prints version information
 
 OPTIONS:
-    -b, --bind <address>     Specify bind address [default: 127.0.0.1]
+    -b, --bind <address>     Specify bind address [default: 0.0.0.0]
     -c, --cache <seconds>    Specify max-age of HTTP caching in seconds [default: 0]
-    -p, --port <port>        Specify port to listen on [default: 8888]
+    -p, --port <port>        Specify port to listen on [default: 5000]
 
 ARGS:
     <path>    Path to a directory for serving files [default: .]
