@@ -22,6 +22,7 @@ The name **sfz** is derived from a accented note [Sforzando][sforzando] in music
 - Conditional requests with cache validations
 - Cross-origin resource sharing
 - Automatic HTTP compression (Brotli, Gzip, Deflate)
+- Automatic rendering `index.html`
 - Respect `.gitignore` file
 
 ## Installation
@@ -73,7 +74,7 @@ $ git clone https://github.com/weihanglo/sfz.git
 $ cd sfz
 $ cargo build --release
 $ ./target/release/sfz --version
-0.0.2
+0.0.3
 ```
 
 [install-rust]: https://www.rust-lang.org/install.html
