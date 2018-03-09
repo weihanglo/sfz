@@ -160,7 +160,7 @@ impl MyService {
     fn can_compress(&self, status: StatusCode, mime: &mime::Mime) -> bool {
         self.args.compress &&
             status != StatusCode::PartialContent &&
-            !mime.is_media()
+            !mime.is_compressed_format()
     }
 
     /// Determine critera if given path exists or not.

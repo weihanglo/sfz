@@ -103,14 +103,21 @@ impl SystemTimeExt for SystemTime {
 }
 
 pub trait MimeExt {
-    fn is_media(&self) -> bool;
+    fn is_compressed_format(&self) -> bool;
 }
 
 impl MimeExt for Mime {
-    /// Detect if MIME type is `video/*` or `audio/*`
-    fn is_media(&self) -> bool {
-        match self.type_() {
-            mime::VIDEO | mime::AUDIO  => true,
+    /// Detect if MIME type is
+    ///
+    /// - `video/*`
+    /// - `audio/*`
+    /// - `*/GIF`
+    /// - `*/JPEG`
+    /// - `*/PNG`
+    fn is_compressed_format(&self) -> bool {
+        match (self.type_(), self.subtype()) {
+            (mime::VIDEO, _) | (mime::AUDIO, _) => true,
+            (_, mime::GIF) | (_, mime::JPEG) | (_, mime::PNG) => true,
             _ => false,
         }
     }
@@ -121,9 +128,12 @@ mod t {
     use super::*;
 
     #[test]
-    fn mime_is_media() {
-        assert!("video/*".parse::<mime::Mime>().unwrap().is_media());
-        assert!("audio/*".parse::<mime::Mime>().unwrap().is_media());
-        assert!(!"text/*".parse::<mime::Mime>().unwrap().is_media());
+    fn mime_is_compressed() {
+        assert!("video/*".parse::<mime::Mime>().unwrap().is_compressed_format());
+        assert!("audio/*".parse::<mime::Mime>().unwrap().is_compressed_format());
+        assert!("*/gif".parse::<mime::Mime>().unwrap().is_compressed_format());
+        assert!("*/jpeg".parse::<mime::Mime>().unwrap().is_compressed_format());
+        assert!("*/png".parse::<mime::Mime>().unwrap().is_compressed_format());
+        assert!(!"text/*".parse::<mime::Mime>().unwrap().is_compressed_format());
     }
 }
