@@ -33,6 +33,8 @@ tera = "0.11"
 serde = "1.0" # For tera serializing variables to template.
 serde_derive = "1.0"
 ignore = "0.4" # Respect to .gitignore while listing directories.
+# Logging
+chrono = "0.4"
 
 [dev-dependencies]
 tempdir = "0.3"

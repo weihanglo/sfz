@@ -56,6 +56,10 @@ pub fn app() -> App<'static, 'static> {
         .long("no-ignore")
         .help("Don't respect gitignore file");
 
+    let arg_no_log = Arg::with_name("no-log")
+        .long("--no-log")
+        .help("Don't log any request/response information.");
+
     let arg_follow_links = Arg::with_name("follow-links")
         .short("L")
         .long("--follow-links")
@@ -76,6 +80,7 @@ pub fn app() -> App<'static, 'static> {
         .arg(arg_unzipped)
         .arg(arg_all)
         .arg(arg_no_ignore)
+        .arg(arg_no_log)
         .arg(arg_follow_links)
         .arg(arg_render_index)
 }

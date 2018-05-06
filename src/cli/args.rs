@@ -27,6 +27,7 @@ pub struct Args {
     pub ignore: bool,
     pub follow_links: bool,
     pub render_index: bool,
+    pub log: bool,
 }
 
 impl Args {
@@ -50,6 +51,7 @@ impl Args {
         let ignore = !matches.is_present("no-ignore");
         let follow_links = matches.is_present("follow-links");
         let render_index = matches.is_present("render-index");
+        let log = !matches.is_present("no-log");
 
         Ok(Args {
             address,
@@ -62,6 +64,7 @@ impl Args {
             ignore,
             follow_links,
             render_index,
+            log,
         })
     }
 
@@ -96,7 +99,7 @@ impl Args {
 }
 
 #[cfg(test)]
-mod tests {
+mod t {
     use super::*;
     use std::fs::File;
     use tempdir::TempDir;

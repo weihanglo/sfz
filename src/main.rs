@@ -20,6 +20,7 @@ extern crate serde_derive;
 extern crate flate2;
 extern crate brotli;
 extern crate ignore;
+extern crate chrono;
 
 #[cfg(test)]
 extern crate tempdir;
@@ -34,7 +35,6 @@ mod server;
 mod http;
 mod cli;
 mod extensions;
-
 
 use std::process;
 use std::error::Error;

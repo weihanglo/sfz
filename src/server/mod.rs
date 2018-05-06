@@ -39,6 +39,7 @@ use hyper::header::{
 use unicase::Ascii;
 use percent_encoding::percent_decode;
 use ignore::gitignore::Gitignore;
+use chrono::Local;
 
 use cli::Args;
 use http::conditional_requests::{
@@ -95,10 +96,20 @@ impl Service for MyService {
     type Future = Box<Future<Item=Self::Response, Error=Self::Error>>;
 
     fn call(&self, req: Self::Request) -> Self::Future {
-        let res = match self.handle_request(req) {
+        let res = match self.handle_request(&req) {
             Ok(res) => res,
             Err(_) => res::internal_server_error(Response::new()),
         };
+        // Logging
+        if self.args.log {
+            println!(r#"[{}] "{} {}" - {}"#,
+                Local::now().format("%d/%b/%Y %H:%M:%S"),
+                req.method(), 
+                req.uri(),
+                res.status(),
+            );
+        }
+        // Returning response
         Box::new(futures::future::ok(res))
     }
 }
@@ -213,7 +224,7 @@ impl MyService {
     }
 
     /// Request handler for `MyService`.
-    fn handle_request(&self, req: Request) -> BoxResult<Response> {
+    fn handle_request(&self, req: &Request) -> BoxResult<Response> {
         let path = &self.file_path_from_path(req.path())?;
 
         // Construct response.
