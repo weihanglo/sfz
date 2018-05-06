@@ -7,6 +7,7 @@
 // except according to those terms.
 
 mod send;
+mod res;
 
 use std::io;
 use std::path::{PathBuf, Path};
@@ -96,7 +97,7 @@ impl Service for MyService {
     fn call(&self, req: Self::Request) -> Self::Future {
         let res = match self.handle_request(req) {
             Ok(res) => res,
-            Err(_) => MyService::internal_server_error(Response::new()),
+            Err(_) => res::internal_server_error(Response::new()),
         };
         Box::new(futures::future::ok(res))
     }
@@ -224,13 +225,13 @@ impl MyService {
 
         // Check critera if the path should be ignore (404 NotFound).
         if !self.path_exists(path) {
-            return Ok(MyService::not_found(res))
+            return Ok(res::not_found(res))
         }
 
         // Unless `follow_links` arg is on, any resource laid outside
         // current directory of basepath are forbidden.
         if !self.args.follow_links && !self.path_is_under_basepath(path) {
-            return Ok(MyService::forbidden(res))
+            return Ok(res::forbidden(res))
         }
 
         // Prepare response body.
@@ -260,12 +261,12 @@ impl MyService {
 
             // Validate preconditions of conditional requests.
             if is_precondition_failed(&req, &etag, &last_modified) {
-                return Ok(MyService::precondition_failed(res))
+                return Ok(res::precondition_failed(res))
             }
 
             // Validate cache freshness.
             if is_fresh(&req, &etag, &last_modified) {
-                return Ok(MyService::not_modified(res)
+                return Ok(res::not_modified(res)
                   .with_header(last_modified)
                   .with_header(etag)
                 )
@@ -328,43 +329,6 @@ impl MyService {
         } else {
             mime::TEXT_PLAIN_UTF_8
         })
-    }
-
-    /// Generate 304 NotModified response.
-    fn not_modified(res: Response) -> Response {
-        res.with_status(StatusCode::NotModified)
-    }
-
-    /// Generate 403 Forbidden response.
-    fn forbidden(res: Response) -> Response {
-        let body = "403 Forbidden";
-        res.with_status(StatusCode::Forbidden)
-            .with_header(ContentLength(body.len() as u64))
-            .with_body(body)
-    }
-
-    /// Generate 404 NotFound response.
-    fn not_found(res: Response) -> Response {
-        let body = "404 Not Found";
-        res.with_status(StatusCode::NotFound)
-            .with_header(ContentLength(body.len() as u64))
-            .with_body(body)
-    }
-
-    /// Generate 412 PreconditionFailed response.
-    fn precondition_failed(res: Response) -> Response {
-        let body = "412 Precondition Failed";
-        res.with_status(StatusCode::PreconditionFailed)
-            .with_header(ContentLength(body.len() as u64))
-            .with_body(body)
-    }
-
-    /// Generate 500 InternalServerError response.
-    fn internal_server_error(res: Response) -> Response {
-        let body = "500 Internal Server Error";
-        res.with_status(StatusCode::InternalServerError)
-            .with_header(ContentLength(body.len() as u64))
-            .with_body(body)
     }
 }
 
