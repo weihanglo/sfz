@@ -362,6 +362,7 @@ mod tests {
                 ignore: true,
                 follow_links: true,
                 render_index: true,
+                log: true,
             }
         }
     }
