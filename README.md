@@ -12,7 +12,7 @@
 
 ![](.github/cover.png)
 
-The name **sfz** is derived from a accented note [Sforzando][sforzando] in music, which meaning “suddenly with force.”
+The name **sfz** is derived from an accented note [Sforzando][sforzando] in music, which means “suddenly with force.”
 
 [sfz]: https://github.com/weihanglo/sfz
 [sforzando]: https://en.wikipedia.org/wiki/Dynamics_(music)#Sudden_changes_and_accented_notes
