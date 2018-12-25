@@ -6,61 +6,38 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-mod send;
 mod res;
+mod send;
 
-use std::io;
-use std::path::{PathBuf, Path};
 use std::convert::AsRef;
+use std::io;
+use std::path::{Path, PathBuf};
 use std::str::Utf8Error;
 use std::sync::Arc;
 
+use chrono::Local;
 use futures;
 use futures::future::Future;
-use hyper::server::{Http, Request, Response, Service};
-use hyper::{StatusCode, mime, Error};
 use hyper::header::{
-    AcceptRanges,
-    AccessControlAllowHeaders,
-    AccessControlAllowOrigin,
-    CacheControl,
-    CacheDirective,
-    ContentEncoding,
-    ContentLength,
-    ContentType,
-    ETag,
-    EntityTag,
-    LastModified,
-    Range,
-    RangeUnit,
-    Server,
-    Vary,
+    AcceptRanges, AccessControlAllowHeaders, AccessControlAllowOrigin, CacheControl,
+    CacheDirective, ContentEncoding, ContentLength, ContentType, ETag, EntityTag, LastModified,
+    Range, RangeUnit, Server, Vary,
 };
-use unicase::Ascii;
-use percent_encoding::percent_decode;
+use hyper::server::{Http, Request, Response, Service};
+use hyper::{mime, Error, StatusCode};
 use ignore::gitignore::Gitignore;
-use chrono::Local;
+use percent_encoding::percent_decode;
+use unicase::Ascii;
 
-use cli::Args;
-use http::conditional_requests::{
-    is_fresh,
-    is_precondition_failed,
-};
-use http::range_requests::{
-    is_range_fresh,
-    is_satisfiable_range,
-    extract_range,
-};
-use http::content_encoding::{
-    get_prior_encoding,
-    compress,
-};
-use BoxResult;
-use extensions::{MimeExt, PathExt, SystemTimeExt, PathType};
 use self::send::{send_dir, send_file, send_file_with_range};
+use cli::Args;
+use extensions::{MimeExt, PathExt, PathType, SystemTimeExt};
+use http::conditional_requests::{is_fresh, is_precondition_failed};
+use http::content_encoding::{compress, get_prior_encoding};
+use http::range_requests::{extract_range, is_range_fresh, is_satisfiable_range};
+use BoxResult;
 
-const SERVER_VERSION: &str =
-    concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
 /// Serializable `Item` that would be passed to Tera for template rendering.
 /// The order of struct fields is deremined to ensure sorting precedence.
@@ -93,7 +70,7 @@ impl Service for MyService {
     type Request = Request;
     type Response = Response;
     type Error = Error;
-    type Future = Box<Future<Item=Self::Response, Error=Self::Error>>;
+    type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
 
     fn call(&self, req: Self::Request) -> Self::Future {
         let res = match self.handle_request(&req) {
@@ -102,9 +79,10 @@ impl Service for MyService {
         };
         // Logging
         if self.args.log {
-            println!(r#"[{}] "{} {}" - {}"#,
+            println!(
+                r#"[{}] "{} {}" - {}"#,
                 Local::now().format("%d/%b/%Y %H:%M:%S"),
-                req.method(), 
+                req.method(),
                 req.uri(),
                 res.status(),
             );
@@ -129,10 +107,12 @@ impl MyService {
         percent_decode(path[1..].as_bytes())
             .decode_utf8()
             .map(|path| self.args.path.join(path.into_owned()))
-            .map(|path| if self.args.render_index && path.is_dir() {
-                path.join("index.html")
-            } else {
-                path
+            .map(|path| {
+                if self.args.render_index && path.is_dir() {
+                    path.join("index.html")
+                } else {
+                    path
+                }
             })
     }
 
@@ -162,7 +142,7 @@ impl MyService {
     /// Enable compression when all criteria are met:
     ///
     /// - `compress` arg is true
-    /// - is not partial responses 
+    /// - is not partial responses
     /// - is not media contents
     ///
     /// # Parameters
@@ -170,9 +150,7 @@ impl MyService {
     /// * `status` - Current status code prepared to respond.
     /// * `mime` - MIME type of the payload.
     fn can_compress(&self, status: StatusCode, mime: &mime::Mime) -> bool {
-        self.args.compress &&
-            status != StatusCode::PartialContent &&
-            !mime.is_compressed_format()
+        self.args.compress && status != StatusCode::PartialContent && !mime.is_compressed_format()
     }
 
     /// Determine critera if given path exists or not.
@@ -184,9 +162,7 @@ impl MyService {
     /// 3. is not ignored
     fn path_exists<P: AsRef<Path>>(&self, path: P) -> bool {
         let path = path.as_ref();
-        path.exists() && 
-            !self.path_is_hidden(path) &&
-            !self.path_is_ignored(path)
+        path.exists() && !self.path_is_hidden(path) && !self.path_is_ignored(path)
     }
 
     /// Determine if given path is hidden.
@@ -195,7 +171,7 @@ impl MyService {
     ///
     /// 1. `all` arg is false
     /// 2. is hidden (prefixed with dot `.`)
-    fn path_is_hidden <P: AsRef<Path>>(&self, path: P) -> bool {
+    fn path_is_hidden<P: AsRef<Path>>(&self, path: P) -> bool {
         !self.args.all && path.as_ref().is_hidden()
     }
 
@@ -205,15 +181,14 @@ impl MyService {
     ///
     /// 1. `ignore` arg is true
     /// 2. matches any rules in .gitignore
-    fn path_is_ignored <P: AsRef<Path>>(&self, path: P) -> bool {
+    fn path_is_ignored<P: AsRef<Path>>(&self, path: P) -> bool {
         let path = path.as_ref();
-        self.args.ignore && self
-            .gitignore.matched(path, path.is_dir()).is_ignore()
+        self.args.ignore && self.gitignore.matched(path, path.is_dir()).is_ignore()
     }
 
     /// Check if requested resource is under directory of basepath.
-    /// 
-    /// The given path must be resolved (canonicalized) to eliminate 
+    ///
+    /// The given path must be resolved (canonicalized) to eliminate
     /// incorrect path reported by symlink path.
     fn path_is_under_basepath<P: AsRef<Path>>(&self, path: P) -> bool {
         let path = path.as_ref();
@@ -236,13 +211,13 @@ impl MyService {
 
         // Check critera if the path should be ignore (404 NotFound).
         if !self.path_exists(path) {
-            return Ok(res::not_found(res))
+            return Ok(res::not_found(res));
         }
 
         // Unless `follow_links` arg is on, any resource laid outside
         // current directory of basepath are forbidden.
         if !self.args.follow_links && !self.path_is_under_basepath(path) {
-            return Ok(res::forbidden(res))
+            return Ok(res::forbidden(res));
         }
 
         // Prepare response body.
@@ -251,12 +226,7 @@ impl MyService {
 
         // Extra process for serving files.
         if path.is_dir() {
-            body = send_dir(
-                path,
-                &self.args.path,
-                self.args.all,
-                self.args.ignore,
-            );
+            body = send_dir(path, &self.args.path, self.args.all, self.args.ignore);
         } else {
             // Cache-Control.
             self.enable_cache_control(&mut res);
@@ -266,28 +236,25 @@ impl MyService {
             let last_modified = LastModified(mtime.into());
             // Concatenate _modified time_ and _file size_ to
             // form a (nearly) strong validator.
-            let etag = ETag(EntityTag::strong(
-                format!("{}-{}", mtime.timestamp(), size))
-            );
+            let etag = ETag(EntityTag::strong(format!("{}-{}", mtime.timestamp(), size)));
 
             // Validate preconditions of conditional requests.
             if is_precondition_failed(&req, &etag, &last_modified) {
-                return Ok(res::precondition_failed(res))
+                return Ok(res::precondition_failed(res));
             }
 
             // Validate cache freshness.
             if is_fresh(&req, &etag, &last_modified) {
                 return Ok(res::not_modified(res)
-                  .with_header(last_modified)
-                  .with_header(etag)
-                )
+                    .with_header(last_modified)
+                    .with_header(etag));
             }
 
             // Range Request support.
             if let Some(range) = req.headers().get::<Range>() {
                 match (
                     is_range_fresh(&req, &etag, &last_modified),
-                    is_satisfiable_range(range, size as u64)
+                    is_satisfiable_range(range, size as u64),
                 ) {
                     (true, Some(content_range)) => {
                         // 206 Partial Content.
@@ -319,9 +286,8 @@ impl MyService {
                 body = buf;
                 // Representation varies, so responds with a `Vary` header.
                 res.headers_mut().set(ContentEncoding(vec![encoding]));
-                res.headers_mut().set(Vary::Items(vec![
-                    Ascii::new("Accept-Encoding".to_owned())
-                ]));
+                res.headers_mut()
+                    .set(Vary::Items(vec![Ascii::new("Accept-Encoding".to_owned())]));
             }
         }
 
@@ -335,10 +301,12 @@ impl MyService {
 
     fn guess_path_mime<P: AsRef<Path>>(path: P) -> mime::Mime {
         let path = path.as_ref();
-        path.mime().unwrap_or_else(|| if path.is_dir() {
-            mime::TEXT_HTML_UTF_8
-        } else {
-            mime::TEXT_PLAIN_UTF_8
+        path.mime().unwrap_or_else(|| {
+            if path.is_dir() {
+                mime::TEXT_HTML_UTF_8
+            } else {
+                mime::TEXT_PLAIN_UTF_8
+            }
         })
     }
 }
@@ -377,10 +345,10 @@ mod tests {
 
     #[test]
     fn file_path_from_path() {
-        let args = Args { 
+        let args = Args {
             render_index: false,
-            path: Path::new("/storage").to_owned(), 
-            ..Default::default() 
+            path: Path::new("/storage").to_owned(),
+            ..Default::default()
         };
         let (service, _) = bootstrap(args);
         let path = "/%E4%BD%A0%E5%A5%BD%E4%B8%96%E7%95%8C";
@@ -389,12 +357,11 @@ mod tests {
             Path::new("/storage/你好世界")
         );
 
-
         // Return index.html if `--render-index` flag is on.
         let dir = TempDir::new(temp_name()).unwrap();
-        let args = Args { 
+        let args = Args {
             path: dir.path().to_owned(),
-            ..Default::default() 
+            ..Default::default()
         };
         let (service, _) = bootstrap(args);
         assert_eq!(
@@ -415,7 +382,9 @@ mod tests {
 
     #[test]
     fn enable_cors() {
-        let args = Args { ..Default::default() };
+        let args = Args {
+            ..Default::default()
+        };
         let (service, mut res) = bootstrap(args);
         service.enable_cors(&mut res);
         assert_eq!(
@@ -426,7 +395,10 @@ mod tests {
 
     #[test]
     fn disable_cors() {
-        let args = Args { cors: false, ..Default::default() };
+        let args = Args {
+            cors: false,
+            ..Default::default()
+        };
         let (service, mut res) = bootstrap(args);
         service.enable_cors(&mut res);
         assert!(!res.headers().has::<AccessControlAllowOrigin>());
@@ -434,7 +406,9 @@ mod tests {
 
     #[test]
     fn enable_cache_control() {
-        let args = Args { ..Default::default() };
+        let args = Args {
+            ..Default::default()
+        };
         let (service, mut res) = bootstrap(args);
         service.enable_cache_control(&mut res);
         assert!(res.headers().has::<CacheControl>());
@@ -442,42 +416,42 @@ mod tests {
 
     #[test]
     fn can_compress() {
-        let args = Args { ..Default::default() };
+        let args = Args {
+            ..Default::default()
+        };
         let (service, _) = bootstrap(args);
         assert!(service.can_compress(StatusCode::Ok, &mime::TEXT_PLAIN));
     }
 
     #[test]
     fn cannot_compress() {
-        let args = Args { compress: false, ..Default::default() };
+        let args = Args {
+            compress: false,
+            ..Default::default()
+        };
         let (service, _) = bootstrap(args);
         assert!(!service.can_compress(StatusCode::Ok, &mime::TEXT_PLAIN));
 
-        let args = Args { ..Default::default() };
+        let args = Args {
+            ..Default::default()
+        };
         let (service, _) = bootstrap(args);
-        assert!(!service.can_compress(
-                StatusCode::PartialContent,
-                &mime::STAR_STAR,
-        ));
-        assert!(!service.can_compress(
-            StatusCode::Ok,
-            &"video/*".parse::<mime::Mime>().unwrap(),
-        ));
-        assert!(!service.can_compress(
-            StatusCode::Ok,
-            &"audio/*".parse::<mime::Mime>().unwrap(),
-        ));
+        assert!(!service.can_compress(StatusCode::PartialContent, &mime::STAR_STAR,));
+        assert!(!service.can_compress(StatusCode::Ok, &"video/*".parse::<mime::Mime>().unwrap(),));
+        assert!(!service.can_compress(StatusCode::Ok, &"audio/*".parse::<mime::Mime>().unwrap(),));
     }
 
     #[ignore]
     #[test]
-    fn path_exists() {
-    }
+    fn path_exists() {}
 
     #[test]
     fn path_is_hidden() {
         // A file prefixed with `.` is considered as hidden.
-        let args = Args { all: false, ..Default::default() };
+        let args = Args {
+            all: false,
+            ..Default::default()
+        };
         let (service, _) = bootstrap(args);
         assert!(service.path_is_hidden(".a-hidden-file"));
     }
@@ -485,19 +459,26 @@ mod tests {
     #[test]
     fn path_is_not_hidden() {
         // `--all` flag is on
-        let args = Args { ..Default::default() };
+        let args = Args {
+            ..Default::default()
+        };
         let (service, _) = bootstrap(args);
         assert!(!service.path_is_hidden(".a-hidden-file"));
 
         // `--all` flag is off and the file is not prefixed with `.`
-        let args = Args { all: false, ..Default::default() };
+        let args = Args {
+            all: false,
+            ..Default::default()
+        };
         let (service, _) = bootstrap(args);
         assert!(!service.path_is_hidden("a-public-file"));
     }
 
     #[test]
     fn path_is_ignored() {
-        let args = Args { ..Default::default() };
+        let args = Args {
+            ..Default::default()
+        };
         let (service, _) = bootstrap(args);
         assert!(!service.path_is_ignored("target"));
     }
@@ -505,12 +486,17 @@ mod tests {
     #[test]
     fn path_is_not_ignored() {
         // `--no-ignore` flag is on
-        let args = Args { ignore: false, ..Default::default() };
+        let args = Args {
+            ignore: false,
+            ..Default::default()
+        };
         let (service, _) = bootstrap(args);
         assert!(!service.path_is_ignored("target"));
 
         // README.md is not ignored.
-        let args = Args { ..Default::default() };
+        let args = Args {
+            ..Default::default()
+        };
         let (service, _) = bootstrap(args);
         assert!(!service.path_is_ignored("README.md"));
     }
@@ -527,13 +513,18 @@ mod tests {
 
         // Is under service's base path
         let symlink_path = src_dir.join("symlink");
-        let args = Args { path: src_dir, ..Default::default() };
+        let args = Args {
+            path: src_dir,
+            ..Default::default()
+        };
         let (service, _) = bootstrap(args);
         symlink(&src_path, &symlink_path).unwrap();
         assert!(service.path_is_under_basepath(&symlink_path));
 
         // Not under base path.
-        let args = Args { ..Default::default() };
+        let args = Args {
+            ..Default::default()
+        };
         let (service, _) = bootstrap(args);
         assert!(!service.path_is_under_basepath(&symlink_path));
     }
@@ -550,19 +541,23 @@ mod tests {
 
         // Is under service's base path
         let symlink_path = src_dir.join("symlink");
-        let args = Args { path: src_dir, ..Default::default() };
+        let args = Args {
+            path: src_dir,
+            ..Default::default()
+        };
         let (service, _) = bootstrap(args);
         symlink_file(&src_path, &symlink_path).unwrap();
         assert!(service.path_is_under_basepath(&symlink_path));
 
         // Not under base path.
-        let args = Args { ..Default::default() };
+        let args = Args {
+            ..Default::default()
+        };
         let (service, _) = bootstrap(args);
         assert!(!service.path_is_under_basepath(&symlink_path));
     }
 
     #[ignore]
     #[test]
-    fn handle_request() {
-    }
+    fn handle_request() {}
 }

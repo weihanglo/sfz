@@ -6,28 +6,17 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use hyper::header::{ContentRange, ContentRangeSpec, ETag, IfRange, LastModified, Range};
 use hyper::server::Request;
-use hyper::header::{
-    ContentRange,
-    ContentRangeSpec,
-    ETag,
-    IfRange,
-    LastModified,
-    Range,
-};
 
 /// Check if given value from `If-Range` header field is fresh.
 ///
 /// According to RFC7232, to validate `If-Range` header, the implementation
 /// must use a strong comparison.
-pub fn is_range_fresh(
-    req: &Request,
-    etag: &ETag,
-    last_modified: &LastModified
-) -> bool {
+pub fn is_range_fresh(req: &Request, etag: &ETag, last_modified: &LastModified) -> bool {
     // Ignore `If-Range` if `Range` header is not present.
     if !req.headers().has::<Range>() {
-        return false
+        return false;
     }
     if let Some(if_range) = req.headers().get::<IfRange>() {
         return match *if_range {
@@ -37,7 +26,7 @@ pub fn is_range_fresh(
                 // Exact match
                 modified == date
             }
-        }
+        };
     }
     // Always be fresh if there is no validators
     true
@@ -55,25 +44,26 @@ pub fn is_range_fresh(
 ///
 /// Note that invalid and multiple byte-range are treaded as an unsatisfiable
 /// range.
-pub fn is_satisfiable_range(
-    range: &Range,
-    instance_length: u64,
-) -> Option<ContentRange> {
+pub fn is_satisfiable_range(range: &Range, instance_length: u64) -> Option<ContentRange> {
     match *range {
         // Try to extract byte range specs from range-unit.
         Range::Bytes(ref byte_range_specs) => Some(byte_range_specs),
         _ => None,
     }
-        .and_then(|specs| if specs.len() == 1 {
+    .and_then(|specs| {
+        if specs.len() == 1 {
             Some(specs[0].to_owned())
         } else {
             None
-        })
-        .and_then(|spec| spec.to_satisfiable_range(instance_length))
-        .and_then(|range| Some(ContentRange(ContentRangeSpec::Bytes {
+        }
+    })
+    .and_then(|spec| spec.to_satisfiable_range(instance_length))
+    .and_then(|range| {
+        Some(ContentRange(ContentRangeSpec::Bytes {
             range: Some(range),
             instance_length: Some(instance_length),
-        })))
+        }))
+    })
 }
 
 /// Extract range from `ContentRange` header field.
@@ -88,9 +78,9 @@ pub fn extract_range(content_range: &ContentRange) -> Option<(u64, u64)> {
 #[cfg(test)]
 mod t_range {
     use super::*;
-    use hyper::Method;
     use hyper::header::EntityTag;
-    use std::time::{SystemTime, Duration};
+    use hyper::Method;
+    use std::time::{Duration, SystemTime};
 
     #[test]
     fn no_range_header() {

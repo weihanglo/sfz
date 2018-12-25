@@ -9,9 +9,9 @@
 //! Response factory functions.
 //!
 
-use hyper::StatusCode;
 use hyper::header::ContentLength;
 use hyper::server::Response;
+use hyper::StatusCode;
 
 /// Generate 304 NotModified response.
 pub fn not_modified(res: Response) -> Response {

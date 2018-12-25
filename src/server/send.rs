@@ -7,15 +7,15 @@
 // except according to those terms.
 
 use std::convert::AsRef;
-use std::io::{self, BufReader};
 use std::fs::File;
+use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
 
 use ignore::WalkBuilder;
-use tera::{Tera, Context};
+use tera::{Context, Tera};
 
-use extensions::{PathExt, PathType};
 use super::Item;
+use extensions::{PathExt, PathType};
 
 /// Send a HTML page of all files under the path.
 ///
@@ -37,9 +37,9 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     let (dir_name, paths) = {
         let dir_name = base_path.filename_str();
         let path = dir_path.strip_prefix(base_path).unwrap();
-        let path_names = path.iter()
-            .map(|s| s.to_str().unwrap());
-        let abs_paths = path.iter()
+        let path_names = path.iter().map(|s| s.to_str().unwrap());
+        let abs_paths = path
+            .iter()
             .scan(PathBuf::new(), |state, path| {
                 state.push(path);
                 Some(state.to_owned())
@@ -80,16 +80,24 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     } else {
         // CWD == sub dir of base dir
         // Append an item for popping back to parent directory.
-        let path = format!("/{}", dir_path
-            .parent().unwrap()
-            .strip_prefix(base_path).unwrap()
-            .to_str().unwrap()
+        let path = format!(
+            "/{}",
+            dir_path
+                .parent()
+                .unwrap()
+                .strip_prefix(base_path)
+                .unwrap()
+                .to_str()
+                .unwrap()
         );
         vec![Item {
             name: "..".to_owned(),
             path,
             path_type: PathType::Dir,
-        }].into_iter().chain(files_iter).collect::<Vec<_>>()
+        }]
+        .into_iter()
+        .chain(files_iter)
+        .collect::<Vec<_>>()
     };
     // Sort files (dir-first and lexicographic ordering).
     files.sort_unstable();
@@ -124,11 +132,11 @@ pub fn send_file_with_range<P: AsRef<Path>>(
     file_path: P,
     range: (u64, u64),
 ) -> io::Result<Vec<u8>> {
-    use std::io::SeekFrom;
     use std::io::prelude::*;
+    use std::io::SeekFrom;
     let (start, end) = range; // TODO: handle end - start < 0
     if end <= start {
-        return Err(io::Error::from(io::ErrorKind::InvalidData))
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
     }
     let mut f = File::open(file_path)?;
     let mut buffer = Vec::new();
