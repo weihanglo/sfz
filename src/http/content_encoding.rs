@@ -9,11 +9,11 @@
 use std::cmp::Ordering;
 use std::io::{self, BufReader};
 
-use hyper::Request;
-use hyper::header::{AcceptEncoding, Encoding, QualityItem, q};
 use brotli;
+use flate2::read::{DeflateEncoder, GzEncoder};
 use flate2::Compression;
-use flate2::read::{GzEncoder, DeflateEncoder};
+use hyper::header::{q, AcceptEncoding, Encoding, QualityItem};
+use hyper::Request;
 
 /// Sorting encodings according to the rank:
 ///
@@ -23,19 +23,16 @@ use flate2::read::{GzEncoder, DeflateEncoder};
 ///
 /// The function only accecpt Brotli, Gzip and Deflate encodings, passing other
 /// encodings in may lead to a unexpected result.
-fn sort_encoding(
-    a: &&QualityItem<Encoding>,
-    b: &&QualityItem<Encoding>,
-) -> Ordering {
-    a.quality.cmp(&b.quality).then_with(|| {
-        match (&a.item, &b.item) {
+fn sort_encoding(a: &&QualityItem<Encoding>, b: &&QualityItem<Encoding>) -> Ordering {
+    a.quality
+        .cmp(&b.quality)
+        .then_with(|| match (&a.item, &b.item) {
             (&Encoding::Brotli, _) => Ordering::Greater,
             (_, &Encoding::Brotli) => Ordering::Less,
             (&Encoding::Gzip, &Encoding::Deflate) => Ordering::Greater,
             (&Encoding::Deflate, &Encoding::Gzip) => Ordering::Less,
             _ => Ordering::Equal,
-        }
-    })
+        })
 }
 
 /// Get prior encoding from `Accept-Encoding` header field.
@@ -43,7 +40,8 @@ fn sort_encoding(
 /// To get the priority of accept encodings, compare quality values first.
 /// If one's quality values equals to the other's, sort by actual encodings.
 pub fn get_prior_encoding(req: &Request) -> Encoding {
-    req.headers().get::<AcceptEncoding>()
+    req.headers()
+        .get::<AcceptEncoding>()
         .and_then(|accept_encoding| {
             let mut vec = vec![];
             let AcceptEncoding(ref encodings) = *accept_encoding;
@@ -83,8 +81,7 @@ pub fn compress(data: &[u8], encoding: &Encoding) -> io::Result<Vec<u8>> {
             Ok(buf)
         }
         Encoding::Gzip => {
-            BufReader::new(GzEncoder::new(data, Compression::default()))
-                .read_to_end(&mut buf)?;
+            BufReader::new(GzEncoder::new(data, Compression::default())).read_to_end(&mut buf)?;
             Ok(buf)
         }
         Encoding::Deflate => {
@@ -115,18 +112,20 @@ mod t_sort {
 
     #[test]
     fn second_item_with_greater_quality() {
-        let a = QualityItem { item: Encoding::Brotli, quality: q(500) };
+        let a = QualityItem {
+            item: Encoding::Brotli,
+            quality: q(500),
+        };
         let b = qitem(Encoding::Gzip);
         assert_eq!(sort_encoding(&&a, &&b), Ordering::Less);
     }
 }
 
-
 #[cfg(test)]
 mod t_prior {
     use super::*;
-    use hyper::Method;
     use hyper::header::{q, qitem};
+    use hyper::Method;
 
     #[test]
     fn no_accept_encoding_header() {
@@ -163,9 +162,10 @@ mod t_prior {
     #[test]
     fn filter_out_zero_quality() {
         let mut req = Request::new(Method::Get, "localhost".parse().unwrap());
-        let accept_encoding = AcceptEncoding(vec![
-            QualityItem { item: Encoding::Brotli, quality: q(0) }
-        ]);
+        let accept_encoding = AcceptEncoding(vec![QualityItem {
+            item: Encoding::Brotli,
+            quality: q(0),
+        }]);
         req.headers_mut().set(accept_encoding);
         assert_eq!(get_prior_encoding(&req), Encoding::Identity);
     }

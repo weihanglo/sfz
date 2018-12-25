@@ -10,17 +10,17 @@
 extern crate clap;
 extern crate futures;
 extern crate hyper;
-extern crate percent_encoding;
-extern crate tera;
 extern crate mime_guess;
-extern crate unicase;
+extern crate percent_encoding;
 extern crate serde;
+extern crate tera;
+extern crate unicase;
 #[macro_use]
 extern crate serde_derive;
-extern crate flate2;
 extern crate brotli;
-extern crate ignore;
 extern crate chrono;
+extern crate flate2;
+extern crate ignore;
 
 #[cfg(test)]
 extern crate tempdir;
@@ -31,23 +31,21 @@ macro_rules! bail {
     }
 }
 
-mod server;
-mod http;
 mod cli;
 mod extensions;
+mod http;
+mod server;
 
-use std::process;
-use std::error::Error;
-use std::sync::Arc;
-use cli::{Args, app};
+use cli::{app, Args};
 use server::serve;
+use std::error::Error;
+use std::process;
+use std::sync::Arc;
 
 pub type BoxResult<T> = Result<T, Box<Error>>;
 
 fn main() {
-    let result = Args::parse(app())
-        .map(Arc::new)
-        .and_then(serve);
+    let result = Args::parse(app()).map(Arc::new).and_then(serve);
     match result {
         Ok(_) => (),
         Err(err) => {

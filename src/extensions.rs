@@ -49,16 +49,12 @@ impl PathExt for Path {
 
     /// Get modified time from a path.
     fn mtime(&self) -> SystemTime {
-        self.metadata()
-            .and_then(|meta| meta.modified())
-            .unwrap()
+        self.metadata().and_then(|meta| meta.modified()).unwrap()
     }
 
     /// Get file size from a path.
     fn size(&self) -> u64 {
-        self.metadata()
-            .map(|meta| meta.len())
-            .unwrap_or_default()
+        self.metadata().map(|meta| meta.len()).unwrap_or_default()
     }
 
     /// Get a filename `String` from a path.
@@ -83,7 +79,7 @@ impl PathExt for Path {
                 } else {
                     PathType::File
                 }
-            }
+            };
         }
         PathType::File
     }
@@ -129,11 +125,41 @@ mod t {
 
     #[test]
     fn mime_is_compressed() {
-        assert!("video/*".parse::<mime::Mime>().unwrap().is_compressed_format());
-        assert!("audio/*".parse::<mime::Mime>().unwrap().is_compressed_format());
-        assert!("*/gif".parse::<mime::Mime>().unwrap().is_compressed_format());
-        assert!("*/jpeg".parse::<mime::Mime>().unwrap().is_compressed_format());
-        assert!("*/png".parse::<mime::Mime>().unwrap().is_compressed_format());
-        assert!(!"text/*".parse::<mime::Mime>().unwrap().is_compressed_format());
+        assert!(
+            "video/*"
+                .parse::<mime::Mime>()
+                .unwrap()
+                .is_compressed_format()
+        );
+        assert!(
+            "audio/*"
+                .parse::<mime::Mime>()
+                .unwrap()
+                .is_compressed_format()
+        );
+        assert!(
+            "*/gif"
+                .parse::<mime::Mime>()
+                .unwrap()
+                .is_compressed_format()
+        );
+        assert!(
+            "*/jpeg"
+                .parse::<mime::Mime>()
+                .unwrap()
+                .is_compressed_format()
+        );
+        assert!(
+            "*/png"
+                .parse::<mime::Mime>()
+                .unwrap()
+                .is_compressed_format()
+        );
+        assert!(
+            !"text/*"
+                .parse::<mime::Mime>()
+                .unwrap()
+                .is_compressed_format()
+        );
     }
 }

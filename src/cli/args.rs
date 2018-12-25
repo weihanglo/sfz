@@ -7,9 +7,9 @@
 // except according to those terms.
 
 use std::env;
-use std::path::PathBuf;
-use std::net::SocketAddr;
 use std::fs::canonicalize;
+use std::net::SocketAddr;
+use std::path::PathBuf;
 
 use clap::App;
 
@@ -37,9 +37,7 @@ impl Args {
     /// error message to user.
     pub fn parse(app: App) -> BoxResult<Args> {
         let matches = app.get_matches();
-        let address = matches.value_of("address")
-            .unwrap_or_default()
-            .to_owned();
+        let address = matches.value_of("address").unwrap_or_default().to_owned();
         let port = value_t!(matches.value_of("port"), u16)?;
         let cache = value_t!(matches.value_of("cache"), u32)?;
         let cors = matches.is_present("cors");
@@ -79,22 +77,29 @@ impl Args {
             path.canonicalize()
         } else {
             env::current_dir().map(|p| p.join(&path))
-        }).and_then(canonicalize).or_else(|err| bail!(
-            "error: failed to access path \"{}\": {}",
-            path.display(),
-            err,
-        ))
+        })
+        .and_then(canonicalize)
+        .or_else(|err| {
+            bail!(
+                "error: failed to access path \"{}\": {}",
+                path.display(),
+                err,
+            )
+        })
     }
 
     /// Construct socket address from arguments.
     pub fn address(&self) -> BoxResult<SocketAddr> {
-        format!("{}:{}", self.address, self.port).parse()
-            .or_else(|err| bail!(
-                "error: invalid address {}:{} : {}",
-                self.address,
-                self.port,
-                err,
-            ))
+        format!("{}:{}", self.address, self.port)
+            .parse()
+            .or_else(|err| {
+                bail!(
+                    "error: invalid address {}:{} : {}",
+                    self.address,
+                    self.port,
+                    err,
+                )
+            })
     }
 }
 
