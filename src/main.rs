@@ -8,22 +8,9 @@
 
 #[macro_use]
 extern crate clap;
-extern crate futures;
-extern crate hyper;
-extern crate mime_guess;
-extern crate percent_encoding;
-extern crate serde;
-extern crate tera;
-extern crate unicase;
+
 #[macro_use]
 extern crate serde_derive;
-extern crate brotli;
-extern crate chrono;
-extern crate flate2;
-extern crate ignore;
-
-#[cfg(test)]
-extern crate tempdir;
 
 macro_rules! bail {
     ($($tt:tt)*) => {
@@ -42,14 +29,14 @@ use std::error::Error;
 use std::process;
 use std::sync::Arc;
 
-pub type BoxResult<T> = Result<T, Box<Error>>;
+pub type BoxResult<T> = Result<T, Box<dyn Error>>;
 
 fn main() {
     let result = Args::parse(app()).map(Arc::new).and_then(serve);
     match result {
         Ok(_) => (),
         Err(err) => {
-            eprintln!("{}", err);
+            dbg!(err);
             process::exit(1)
         }
     }

@@ -35,7 +35,7 @@ impl Args {
     ///
     /// If a parsing error ocurred, exit the process and print out informative
     /// error message to user.
-    pub fn parse(app: App) -> BoxResult<Args> {
+    pub fn parse(app: App<'_, '_>) -> BoxResult<Args> {
         let matches = app.get_matches();
         let address = matches.value_of("address").unwrap_or_default().to_owned();
         let port = value_t!(matches.value_of("port"), u16)?;
