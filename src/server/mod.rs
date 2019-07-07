@@ -70,7 +70,7 @@ impl Service for MyService {
     type Request = Request;
     type Response = Response;
     type Error = Error;
-    type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
+    type Future = Box<dyn Future<Item = Self::Response, Error = Self::Error>>;
 
     fn call(&self, req: Self::Request) -> Self::Future {
         let res = match self.handle_request(&req) {
