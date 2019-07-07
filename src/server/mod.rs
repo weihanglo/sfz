@@ -27,6 +27,7 @@ use hyper::server::{Http, Request, Response, Service};
 use hyper::{mime, Error, StatusCode};
 use ignore::gitignore::Gitignore;
 use percent_encoding::percent_decode;
+use serde::Serialize;
 use unicase::Ascii;
 
 use self::send::{send_dir, send_file, send_file_with_range};

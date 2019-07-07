@@ -31,8 +31,7 @@ brotli = "2.1"
 flate2 = { version = "1.0", features = ["rust_backend"], default-features = false }
 # Rendering
 tera = "0.11"
-serde = "1.0" # For tera serializing variables to template.
-serde_derive = "1.0"
+serde = { version = "1.0", features = ["derive"] } # For tera serializing variables to template.
 ignore = "0.4" # Respect to .gitignore while listing directories.
 # Logging
 chrono = "0.4"

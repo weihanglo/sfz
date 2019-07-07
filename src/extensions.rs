@@ -11,6 +11,7 @@ use std::time::SystemTime;
 
 use hyper::mime::{self, Mime};
 use mime_guess::guess_mime_type_opt;
+use serde::Serialize;
 
 /// Indicate that a path is a normal file/dir or a symlink to another path/dir.
 ///
