@@ -126,41 +126,29 @@ mod t {
 
     #[test]
     fn mime_is_compressed() {
-        assert!(
-            "video/*"
-                .parse::<mime::Mime>()
-                .unwrap()
-                .is_compressed_format()
-        );
-        assert!(
-            "audio/*"
-                .parse::<mime::Mime>()
-                .unwrap()
-                .is_compressed_format()
-        );
-        assert!(
-            "*/gif"
-                .parse::<mime::Mime>()
-                .unwrap()
-                .is_compressed_format()
-        );
-        assert!(
-            "*/jpeg"
-                .parse::<mime::Mime>()
-                .unwrap()
-                .is_compressed_format()
-        );
-        assert!(
-            "*/png"
-                .parse::<mime::Mime>()
-                .unwrap()
-                .is_compressed_format()
-        );
-        assert!(
-            !"text/*"
-                .parse::<mime::Mime>()
-                .unwrap()
-                .is_compressed_format()
-        );
+        assert!("video/*"
+            .parse::<mime::Mime>()
+            .unwrap()
+            .is_compressed_format());
+        assert!("audio/*"
+            .parse::<mime::Mime>()
+            .unwrap()
+            .is_compressed_format());
+        assert!("*/gif"
+            .parse::<mime::Mime>()
+            .unwrap()
+            .is_compressed_format());
+        assert!("*/jpeg"
+            .parse::<mime::Mime>()
+            .unwrap()
+            .is_compressed_format());
+        assert!("*/png"
+            .parse::<mime::Mime>()
+            .unwrap()
+            .is_compressed_format());
+        assert!(!"text/*"
+            .parse::<mime::Mime>()
+            .unwrap()
+            .is_compressed_format());
     }
 }

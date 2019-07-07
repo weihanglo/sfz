@@ -6,14 +6,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version};
 use clap::{App, Arg};
-use clap::{
-    app_from_crate,
-    crate_authors,
-    crate_description,
-    crate_name,
-    crate_version,
-};
 
 const ABOUT: &str = concat!("\n", crate_description!()); // Add extra newline.
 
