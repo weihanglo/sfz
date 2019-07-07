@@ -1,5 +1,6 @@
 # [![sfz](.github/sfz.svg)][sfz]
 
+[![Rust Edition](https://img.shields.io/badge/Rust_Edition-2018-green.svg)](https://rust-lang-nursery.github.io/edition-guide/rust-2018)
 [![sfz on Crates.io](https://img.shields.io/crates/v/sfz.svg)](https://crates.io/crates/sfz)
 [![Dependency status](https://deps.rs/repo/github/weihanglo/sfz/status.svg)](https://deps.rs/repo/github/weihanglo/sfz)
 
