@@ -27,7 +27,7 @@ mime_guess = "2.0.0-alpha"
 percent-encoding = "1.0"
 unicase = "2.1" # Dependency for Hyper CORS headers
 # Compression
-brotli = "2.1"
+brotli = "3"
 flate2 = { version = "1.0", features = ["rust_backend"], default-features = false }
 # Rendering
 tera = "0.11"
