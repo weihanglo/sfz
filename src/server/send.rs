@@ -15,7 +15,7 @@ use ignore::WalkBuilder;
 use tera::{Context, Tera};
 
 use super::Item;
-use extensions::{PathExt, PathType};
+use crate::extensions::{PathExt, PathType};
 
 /// Send a HTML page of all files under the path.
 ///

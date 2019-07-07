@@ -12,7 +12,7 @@ use hyper::header::{ETag, IfMatch, IfModifiedSince, IfNoneMatch, IfUnmodifiedSin
 use hyper::server::Request;
 use hyper::Method;
 
-use extensions::SystemTimeExt;
+use crate::extensions::SystemTimeExt;
 
 /// Validate precondition of `If-Match` header.
 ///
