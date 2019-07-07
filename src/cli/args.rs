@@ -11,7 +11,7 @@ use std::fs::canonicalize;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use clap::{App, value_t};
+use clap::{value_t, App};
 
 use crate::BoxResult;
 
