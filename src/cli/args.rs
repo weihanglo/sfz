@@ -13,7 +13,7 @@ use std::path::PathBuf;
 
 use clap::App;
 
-use BoxResult;
+use crate::BoxResult;
 
 #[derive(Debug, Clone)]
 pub struct Args {

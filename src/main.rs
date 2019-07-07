@@ -36,8 +36,8 @@ mod extensions;
 mod http;
 mod server;
 
-use cli::{app, Args};
-use server::serve;
+use crate::cli::{app, Args};
+use crate::server::serve;
 use std::error::Error;
 use std::process;
 use std::sync::Arc;

@@ -30,12 +30,12 @@ use percent_encoding::percent_decode;
 use unicase::Ascii;
 
 use self::send::{send_dir, send_file, send_file_with_range};
-use cli::Args;
-use extensions::{MimeExt, PathExt, PathType, SystemTimeExt};
-use http::conditional_requests::{is_fresh, is_precondition_failed};
-use http::content_encoding::{compress, get_prior_encoding};
-use http::range_requests::{extract_range, is_range_fresh, is_satisfiable_range};
-use BoxResult;
+use crate::cli::Args;
+use crate::extensions::{MimeExt, PathExt, PathType, SystemTimeExt};
+use crate::http::conditional_requests::{is_fresh, is_precondition_failed};
+use crate::http::content_encoding::{compress, get_prior_encoding};
+use crate::http::range_requests::{extract_range, is_range_fresh, is_satisfiable_range};
+use crate::BoxResult;
 
 const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
