@@ -6,12 +6,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#[macro_use]
-extern crate clap;
-
-#[macro_use]
-extern crate serde_derive;
-
 macro_rules! bail {
     ($($tt:tt)*) => {
         return Err(From::from(format!($($tt)*)));
@@ -23,11 +17,12 @@ mod extensions;
 mod http;
 mod server;
 
-use crate::cli::{app, Args};
-use crate::server::serve;
 use std::error::Error;
 use std::process;
 use std::sync::Arc;
+
+use crate::cli::{app, Args};
+use crate::server::serve;
 
 pub type BoxResult<T> = Result<T, Box<dyn Error>>;
 
