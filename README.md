@@ -115,7 +115,7 @@ FLAGS:
     -h, --help            Prints help information
     -I, --no-ignore       Don't respect gitignore file
         --no-log          Don't log any request/response information.
-    -r, --render-index    Render index.html when requesting a directory.
+    -r, --render-index    Render existing index.html when requesting a directory.
     -Z, --unzipped        Disable HTTP compression
     -V, --version         Prints version information
 

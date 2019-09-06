@@ -69,7 +69,7 @@ pub fn app() -> App<'static, 'static> {
     let arg_render_index = Arg::with_name("render-index")
         .short("r")
         .long("--render-index")
-        .help("Render index.html when requesting a directory.");
+        .help("Render existing index.html when requesting a directory.");
 
     app_from_crate!()
         .about(ABOUT)
