@@ -104,10 +104,10 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     // Render page with Tera template engine.
     let mut ctx = Context::new();
-    ctx.add("files", &files);
-    ctx.add("dir_name", &dir_name);
-    ctx.add("paths", &paths);
-    ctx.add("style", include_str!("style.css"));
+    ctx.insert("files", &files);
+    ctx.insert("dir_name", &dir_name);
+    ctx.insert("paths", &paths);
+    ctx.insert("style", include_str!("style.css"));
     let page = Tera::one_off(include_str!("index.html"), &ctx, true)
         .unwrap_or_else(|e| format!("500 Internal server error: {}", e));
     Ok(Vec::from(page))
