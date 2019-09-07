@@ -1,15 +1,15 @@
 class Sfz < Formula
-  version '0.0.3'
+  version '0.0.4'
   desc "A simple static file serving command-line tool."
   homepage "https://github.com/weihanglo/sfz"
   head "https://github.com/weihanglo/sfz.git"
 
   if OS.mac?
       url "https://github.com/weihanglo/sfz/releases/download/#{version}/sfz-#{version}-x86_64-apple-darwin.tar.gz"
-      sha256 "34b10cd9c530f18ad252660b57dabad722faadbde5ad39ea1dc7fce279ad9c55"
+      sha256 "a24f6742eacc307e09391686ba4972873c61fa94085e295fadff16f1bc3cc392"
   elsif OS.linux?
       url "https://github.com/weihanglo/sfz/releases/download/#{version}/sfz-#{version}-x86_64-unknown-linux-musl.tar.gz"
-      sha256 "fdec9a1d1d5fa68816576a42ac70c714c5ed79598dcbe037d49d3cb644310a5e"
+      sha256 "50ab4cd2f90ab864b852c13f1af330059dde2950783971641a8944cbf3e918d6"
   end
 
   def install

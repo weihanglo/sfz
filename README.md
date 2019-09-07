@@ -1,5 +1,5 @@
 # [![sfz](.github/sfz.svg)][sfz]
-
+4
 [![Rust Edition](https://img.shields.io/badge/Rust_Edition-2018-green.svg)](https://rust-lang-nursery.github.io/edition-guide/rust-2018)
 [![sfz on Crates.io](https://img.shields.io/crates/v/sfz.svg)](https://crates.io/crates/sfz)
 [![Dependency status](https://deps.rs/repo/github/weihanglo/sfz/status.svg)](https://deps.rs/repo/github/weihanglo/sfz)
@@ -77,7 +77,7 @@ $ git clone https://github.com/weihanglo/sfz.git
 $ cd sfz
 $ cargo build --release
 $ ./target/release/sfz --version
-0.0.3
+0.0.4
 ```
 
 [install-rust]: https://www.rust-lang.org/install.html
