@@ -10,7 +10,7 @@ use std::path::Path;
 use std::time::SystemTime;
 
 use hyper::mime::{self, Mime};
-use mime_guess::guess_mime_type_opt;
+use mime_guess;
 use serde::Serialize;
 
 /// Indicate that a path is a normal file/dir or a symlink to another path/dir.
@@ -37,7 +37,7 @@ pub trait PathExt {
 impl PathExt for Path {
     /// Guess MIME type from a path.
     fn mime(&self) -> Option<Mime> {
-        guess_mime_type_opt(&self)
+        mime_guess::from_path(&self).first()
     }
 
     /// Check if path is hidden.
