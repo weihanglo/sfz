@@ -102,19 +102,25 @@ impl MyService {
     /// Construct file path from request path.
     ///
     /// 1. Remove leading slash.
-    /// 2. URI percent decode.
-    /// 3. Concatenate base path and requested path.
-    fn file_path_from_path(&self, path: &str) -> Result<PathBuf, Utf8Error> {
-        percent_decode(path[1..].as_bytes())
-            .decode_utf8()
-            .map(|path| self.args.path.join(path.into_owned()))
-            .map(|path| {
-                if self.args.render_index && path.is_dir() {
-                    path.join("index.html")
-                } else {
-                    path
-                }
-            })
+    /// 2. Strip path prefix if defined
+    /// 3. URI percent decode.
+    /// 4. Concatenate base path and requested path.
+    fn file_path_from_path(&self, path: &str) -> Result<Option<PathBuf>, Utf8Error> {
+        let decoded = percent_decode(path[1..].as_bytes())
+            .decode_utf8()?
+            .into_owned();
+
+        let stripped_path = match self.strip_path_prefix(&decoded) {
+            Some(path) => path,
+            None => return Ok(None),
+        };
+
+        let mut path = self.args.path.join(stripped_path);
+        if self.args.render_index && path.is_dir() {
+            path.push("index.html")
+        }
+
+        Ok(Some(path))
     }
 
     /// Enable HTTP cache control (current always enable with max-age=0)
@@ -199,25 +205,48 @@ impl MyService {
         }
     }
 
+    /// strip the path prefix of the request path
+    ///
+    /// if there is a path prefix defined and strip_prefix returns None return None
+    /// else return the path with the prefix stripped
+    fn strip_path_prefix<'a, T: AsRef<Path>>(&self, path: &'a T) -> Option<&'a Path> {
+        match self.args.path_prefix.as_deref() {
+            Some(mut path_prefix) => {
+                if path_prefix.starts_with('/') {
+                    path_prefix = &path_prefix[1..];
+                }
+
+                match path.as_ref().strip_prefix(path_prefix) {
+                    Ok(path) => Some(path),
+                    Err(_) => None,
+                }
+            }
+            None => Some(path.as_ref()),
+        }
+    }
+
     /// Request handler for `MyService`.
     fn handle_request(&self, req: &Request) -> BoxResult<Response> {
-        let path = &self.file_path_from_path(req.path())?;
-
         // Construct response.
         let mut res = Response::new();
         res.headers_mut().set(Server::new(SERVER_VERSION));
+
+        let path = match self.file_path_from_path(req.path())? {
+            Some(path) => path,
+            None => return Ok(res::not_found(res)),
+        };
 
         // CORS headers
         self.enable_cors(&mut res);
 
         // Check critera if the path should be ignore (404 NotFound).
-        if !self.path_exists(path) {
+        if !self.path_exists(&path) {
             return Ok(res::not_found(res));
         }
 
         // Unless `follow_links` arg is on, any resource laid outside
         // current directory of basepath are forbidden.
-        if !self.args.follow_links && !self.path_is_under_basepath(path) {
+        if !self.args.follow_links && !self.path_is_under_basepath(&path) {
             return Ok(res::forbidden(res));
         }
 
@@ -227,7 +256,13 @@ impl MyService {
 
         // Extra process for serving files.
         if path.is_dir() {
-            body = send_dir(path, &self.args.path, self.args.all, self.args.ignore);
+            body = send_dir(
+                &path,
+                &self.args.path,
+                self.args.all,
+                self.args.ignore,
+                self.args.path_prefix.as_deref(),
+            );
         } else {
             // Cache-Control.
             self.enable_cache_control(&mut res);
@@ -260,7 +295,7 @@ impl MyService {
                     (true, Some(content_range)) => {
                         // 206 Partial Content.
                         if let Some(range) = extract_range(&content_range) {
-                            body = send_file_with_range(path, range);
+                            body = send_file_with_range(&path, range);
                         }
                         res.headers_mut().set(content_range);
                         res.set_status(StatusCode::PartialContent);
@@ -272,14 +307,14 @@ impl MyService {
             }
 
             if res.status() != StatusCode::PartialContent {
-                body = send_file(path);
+                body = send_file(&path);
             }
             res.headers_mut().set(last_modified);
             res.headers_mut().set(etag);
         }
 
         let mut body = body?;
-        let mime_type = MyService::guess_path_mime(path);
+        let mime_type = MyService::guess_path_mime(&path);
 
         if self.can_compress(res.status(), &mime_type) {
             let encoding = get_prior_encoding(&req);
@@ -332,6 +367,7 @@ mod tests {
                 follow_links: true,
                 render_index: true,
                 log: true,
+                path_prefix: None,
             }
         }
     }
@@ -355,7 +391,7 @@ mod tests {
         let path = "/%E4%BD%A0%E5%A5%BD%E4%B8%96%E7%95%8C";
         assert_eq!(
             service.file_path_from_path(path).unwrap(),
-            Path::new("/storage/你好世界")
+            Some(PathBuf::from("/storage/你好世界"))
         );
 
         // Return index.html if `--render-index` flag is on.
@@ -367,7 +403,7 @@ mod tests {
         let (service, _) = bootstrap(args);
         assert_eq!(
             service.file_path_from_path(".").unwrap(),
-            dir.path().join("index.html"),
+            Some(dir.path().join("index.html")),
         );
     }
 
@@ -556,6 +592,35 @@ mod tests {
         };
         let (service, _) = bootstrap(args);
         assert!(!service.path_is_under_basepath(&symlink_path));
+    }
+
+    #[test]
+    fn strips_path_prefix() {
+        let args = Args {
+            path_prefix: Some("/foo".into()),
+            ..Default::default()
+        };
+        let (service, _) = bootstrap(args);
+
+        assert_eq!(
+            service.strip_path_prefix(&Path::new("foo/dir/to/bar.txt")),
+            Some(Path::new("dir/to/bar.txt"))
+        );
+
+        assert_eq!(
+            service.strip_path_prefix(&Path::new("dir/to/bar.txt")),
+            None
+        );
+
+        let args = Args {
+            ..Default::default()
+        };
+        let (service, _) = bootstrap(args);
+
+        assert_eq!(
+            service.strip_path_prefix(&Path::new("foo/dir/to/bar.txt")),
+            Some(Path::new("foo/dir/to/bar.txt"))
+        );
     }
 
     #[ignore]

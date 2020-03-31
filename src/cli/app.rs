@@ -71,6 +71,11 @@ pub fn app() -> App<'static, 'static> {
         .long("--render-index")
         .help("Render existing index.html when requesting a directory.");
 
+    let arg_path_prefix = Arg::with_name("path-prefix")
+        .long("path-prefix")
+        .help("Specify an url path prefix, helpful when running behing a reverse proxy")
+        .value_name("path");
+
     app_from_crate!()
         .about(ABOUT)
         .arg(arg_address)
@@ -84,4 +89,5 @@ pub fn app() -> App<'static, 'static> {
         .arg(arg_no_log)
         .arg(arg_follow_links)
         .arg(arg_render_index)
+        .arg(arg_path_prefix)
 }
