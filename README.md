@@ -2,7 +2,6 @@
 
 [![Rust Edition](https://img.shields.io/badge/Rust_Edition-2018-green.svg)](https://rust-lang-nursery.github.io/edition-guide/rust-2018)
 [![sfz on Crates.io](https://img.shields.io/crates/v/sfz.svg)](https://crates.io/crates/sfz)
-[![Dependency status](https://deps.rs/repo/github/weihanglo/sfz/status.svg)](https://deps.rs/repo/github/weihanglo/sfz)
 
 [![Linux build status](https://travis-ci.org/weihanglo/sfz.svg?branch=master)](https://travis-ci.org/weihanglo/sfz)
 [![Windows build status](https://ci.appveyor.com/api/projects/status/github/weihanglo/sfz?svg=true)](https://ci.appveyor.com/project/weihanglo/sfz)
@@ -27,6 +26,7 @@ The name **sfz** is derived from an accented note [Sforzando][sforzando] in musi
 - Automatic HTTP compression (Brotli, Gzip, Deflate)
 - Automatic rendering `index.html`
 - Respect `.gitignore` file
+- Customize path prefix
 
 ## Installation
 
@@ -77,7 +77,7 @@ $ git clone https://github.com/weihanglo/sfz.git
 $ cd sfz
 $ cargo build --release
 $ ./target/release/sfz --version
-0.0.4
+0.1.0
 ```
 
 [install-rust]: https://www.rust-lang.org/install.html
@@ -120,9 +120,10 @@ FLAGS:
     -V, --version         Prints version information
 
 OPTIONS:
-    -b, --bind <address>     Specify bind address [default: 0.0.0.0]
-    -c, --cache <seconds>    Specify max-age of HTTP caching in seconds [default: 0]
-    -p, --port <port>        Specify port to listen on [default: 5000]
+    -b, --bind <address>        Specify bind address [default: 0.0.0.0]
+    -c, --cache <seconds>       Specify max-age of HTTP caching in seconds [default: 0]
+        --path-prefix <path>    Specify an url path prefix, helpful when running behing a reverse proxy
+    -p, --port <port>           Specify port to listen on [default: 5000]
 
 ARGS:
     <path>    Path to a directory for serving files [default: .]
