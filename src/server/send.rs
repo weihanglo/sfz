@@ -25,18 +25,23 @@ use crate::extensions::{PathExt, PathType};
 /// * `base_path` - The base path resolving all filepaths under `dir_path`.
 /// * `show_all` - Whether to show hidden and 'dot' files.
 /// * `with_ignore` - Whether to respet gitignore files.
+/// * `path_prefix` - The url path prefix optionally defined
 pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     dir_path: P1,
     base_path: P2,
     show_all: bool,
     with_ignore: bool,
+    path_prefix: Option<&str>,
 ) -> io::Result<Vec<u8>> {
     let base_path = base_path.as_ref();
     let dir_path = dir_path.as_ref();
     // Prepare dirname of current dir relative to base path.
+    let prefix = path_prefix.unwrap_or("");
+
     let (dir_name, paths) = {
         let dir_name = base_path.filename_str();
         let path = dir_path.strip_prefix(base_path).unwrap();
+
         let path_names = path.iter().map(|s| s.to_str().unwrap());
         let abs_paths = path
             .iter()
@@ -46,9 +51,15 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
             })
             .map(|s| format!("/{}", s.to_str().unwrap()));
         // Tuple structure: (name, path)
-        let paths = vec![(dir_name, String::from("/"))]
+        let paths = vec![(dir_name, String::new())];
+
+        let paths = paths
             .into_iter()
             .chain(path_names.zip(abs_paths))
+            .map(|mut p| {
+                p.1 = format!("{}/{}", prefix, p.1);
+                p
+            })
             .collect::<Vec<_>>();
         (dir_name, paths)
     };
@@ -65,8 +76,13 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
             let abs_path = entry.path();
             // Get relative path.
             let rel_path = abs_path.strip_prefix(base_path).unwrap();
+            let rel_path_ref = rel_path.to_str().unwrap_or_default();
             // Add "/" prefix to construct absolute hyperlink.
-            let path = format!("/{}", rel_path.to_str().unwrap_or_default());
+            // if there's a path_prefix prefixit
+            let path = path_prefix.map_or(format!("{}", rel_path_ref), |path_prefix| {
+                format!("{}/{}", path_prefix, rel_path_ref)
+            });
+
             Item {
                 path_type: abs_path.type_(),
                 name: rel_path.filename_str().to_owned(),
@@ -80,8 +96,10 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     } else {
         // CWD == sub dir of base dir
         // Append an item for popping back to parent directory.
+
         let path = format!(
-            "/{}",
+            "{}/{}",
+            prefix,
             dir_path
                 .parent()
                 .unwrap()
