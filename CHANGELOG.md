@@ -3,15 +3,23 @@
 This project adheres to [Semantic Versioning](http://semver.org/).  
 Every release, along with the migration instructions, is documented on this file and Github [Releases](https://github.com/weihanglo/sfz/releases) page.
 
+## [Unreleased](https://github.com/weihanglo/sfz/compare/0.1.0...HEAD)
 
-## [Unreleased](https://github.com/weihanglo/sfz/compare/0.0.4...HEAD)
+## [0.1.0] - 2020-05-01
+
+### [Changes][0.1.0-changes]
+
+- Added new flag `--path-prefix` to customize path prefix when serving content (credit to [@jxs](https://github.com/jxs))
+
+[0.1.0]: https://github.com/weihanglo/sfz/releases/tag/0.1.0
+[0.1.0-changes]: https://github.com/weihanglo/sfz/compare/0.0.4...0.1.0
 
 ## [0.0.4] - 2019-09-07
 
 ### [Changes][0.0.4-changes]
 
 - Added new feature: logs request/response by default.
-- Added new option flag `---no-log` to disable request/response logging.
+- Added new option flag `--no-log` to disable request/response logging.
 - Updated to Rust 2018 edition.
 - Upgraded dependency `mime_guess` from 2.0.0-alpha to 2.0.
 - Upgraded dependency `percent-encoding` from 1.0 to 2.1.
