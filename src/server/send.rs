@@ -57,7 +57,11 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
             .into_iter()
             .chain(path_names.zip(abs_paths))
             .map(|mut p| {
-                p.1 = format!("{}/{}", prefix, p.1);
+                p.1 = format!(
+                    "{}{}",
+                    prefix,
+                    if p.1.is_empty() { "/" } else { &p.1 },
+                );
                 p
             })
             .collect::<Vec<_>>();
@@ -77,16 +81,11 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
             // Get relative path.
             let rel_path = abs_path.strip_prefix(base_path).unwrap();
             let rel_path_ref = rel_path.to_str().unwrap_or_default();
-            // Add "/" prefix to construct absolute hyperlink.
-            // if there's a path_prefix prefixit
-            let path = path_prefix.map_or(format!("{}", rel_path_ref), |path_prefix| {
-                format!("{}/{}", path_prefix, rel_path_ref)
-            });
 
             Item {
                 path_type: abs_path.type_(),
                 name: rel_path.filename_str().to_owned(),
-                path,
+                path: format!("{}/{}", prefix, rel_path_ref),
             }
         });
 
