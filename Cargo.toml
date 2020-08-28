@@ -30,7 +30,7 @@ unicase = "2.5" # Dependency for Hyper CORS headers
 brotli = "3"
 flate2 = { version = "1.0", features = ["rust_backend"], default-features = false }
 # Rendering
-tera = "0.11"
+tera = "1"
 serde = { version = "1.0", features = ["derive"] } # For tera serializing variables to template.
 ignore = "0.4" # Respect to .gitignore while listing directories.
 # Logging
