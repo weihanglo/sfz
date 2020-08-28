@@ -21,8 +21,9 @@ travis-ci = { repository = "weihanglo/sfz" }
 # Command-line
 clap = { version = "2.33", default-features = false }
 # Server
+tokio = { version = "0.2", features = ["rt-core", "tcp", "macros"] }
 futures = { version = "0.1", features = ["use_std"], default-features = false }
-hyper = { version = "0.11", default-features = false }
+hyper = "0.13"
 mime_guess = "2.0"
 percent-encoding = "2.1"
 unicase = "2.6" # Dependency for Hyper CORS headers

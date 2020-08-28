@@ -9,8 +9,7 @@
 use std::path::Path;
 use std::time::SystemTime;
 
-use hyper::mime::{self, Mime};
-use mime_guess;
+use mime_guess::{mime, Mime};
 use serde::Serialize;
 
 /// Indicate that a path is a normal file/dir or a symlink to another path/dir.

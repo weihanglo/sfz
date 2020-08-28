@@ -14,25 +14,21 @@ macro_rules! bail {
 
 mod cli;
 mod extensions;
-mod http;
+// mod http;
 mod server;
-
-use std::error::Error;
-use std::process;
-use std::sync::Arc;
 
 use crate::cli::{app, Args};
 use crate::server::serve;
 
-pub type BoxResult<T> = Result<T, Box<dyn Error>>;
+pub type BoxResult<T> = Result<T, Box<dyn std::error::Error>>;
 
-fn main() {
-    let result = Args::parse(app()).map(Arc::new).and_then(serve);
-    match result {
-        Ok(_) => (),
-        Err(err) => {
-            dbg!(err);
-            process::exit(1)
-        }
-    }
+#[tokio::main]
+async fn main() {
+    let args = Args::parse(app()).unwrap_or_else(handle_err);
+    serve(args).await.unwrap_or_else(handle_err);
+}
+
+fn handle_err<T>(err: Box<dyn std::error::Error>) -> T {
+    dbg!(err);
+    std::process::exit(1);
 }
