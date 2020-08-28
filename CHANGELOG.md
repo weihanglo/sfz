@@ -3,13 +3,22 @@
 This project adheres to [Semantic Versioning](http://semver.org/).  
 Every release, along with the migration instructions, is documented on this file and Github [Releases](https://github.com/weihanglo/sfz/releases) page.
 
-## [Unreleased](https://github.com/weihanglo/sfz/compare/0.1.1...HEAD)
+## [Unreleased](https://github.com/weihanglo/sfz/compare/0.1.2...HEAD)
+
+## [0.1.2] - 2020-08-28
+
+### [Changes][0.1.2-changes]
+
+- Fix range header off-by-one error ([#39](https://github.com/weihanglo/sfz/issues/39))
+
+[0.1.2]: https://github.com/weihanglo/sfz/releases/tag/0.1.2
+[0.1.2-changes]: https://github.com/weihanglo/sfz/compare/0.1.1...0.1.2
 
 ## [0.1.1] - 2020-06-04
 
-### [Changes][0.1.0-changes]
+### [Changes][0.1.1-changes]
 
-- Fix duplicated prefix slash regression issue
+- Fix duplicated prefix slash regression issue ([#31](https://github.com/weihanglo/sfz/issues/31))
 
 [0.1.1]: https://github.com/weihanglo/sfz/releases/tag/0.1.1
 [0.1.1-changes]: https://github.com/weihanglo/sfz/compare/0.1.0...0.1.1

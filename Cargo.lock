@@ -958,7 +958,7 @@ dependencies = [
 
 [[package]]
 name = "sfz"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "brotli 3.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
