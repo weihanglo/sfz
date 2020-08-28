@@ -19,7 +19,7 @@ travis-ci = { repository = "weihanglo/sfz" }
 
 [dependencies]
 # Command-line
-clap = { version = "2.3", features = ["suggestions", "color"], default-features = false }
+clap = { version = "2.33", default-features = false }
 # Server
 futures = { version = "0.1", features = ["use_std"], default-features = false }
 hyper = { version = "0.11", default-features = false }
