@@ -19,18 +19,18 @@ travis-ci = { repository = "weihanglo/sfz" }
 
 [dependencies]
 # Command-line
-clap = { version = "2.3", features = ["suggestions", "color"], default-features = false }
+clap = { version = "2.33", default-features = false }
 # Server
 futures = { version = "0.1", features = ["use_std"], default-features = false }
 hyper = { version = "0.11", default-features = false }
 mime_guess = "2.0"
 percent-encoding = "2.1"
-unicase = "2.5" # Dependency for Hyper CORS headers
+unicase = "2.6" # Dependency for Hyper CORS headers
 # Compression
 brotli = "3"
 flate2 = { version = "1.0", features = ["rust_backend"], default-features = false }
 # Rendering
-tera = "0.11"
+tera = "1"
 serde = { version = "1.0", features = ["derive"] } # For tera serializing variables to template.
 ignore = "0.4" # Respect to .gitignore while listing directories.
 # Logging
