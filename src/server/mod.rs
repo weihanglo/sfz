@@ -6,23 +6,24 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// mod res;
+mod res;
 mod send;
 
-use std::convert::AsRef;
+use std::convert::{AsRef, Infallible};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::str::Utf8Error;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use chrono::Local;
-use futures;
-use futures::future::Future;
 use hyper::service::{make_service_fn, service_fn};
+use hyper::Server;
 use ignore::gitignore::Gitignore;
 use percent_encoding::percent_decode;
 use serde::Serialize;
 use unicase::Ascii;
+use mime_guess::mime;
 
 use self::send::{send_dir, send_file, send_file_with_range};
 use crate::cli::Args;
@@ -33,6 +34,9 @@ use crate::extensions::{MimeExt, PathExt, PathType, SystemTimeExt};
 use crate::BoxResult;
 
 const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+
+pub type Request = hyper::Request<hyper::Body>;
+pub type Response = hyper::Response<hyper::Body>;
 
 /// Serializable `Item` that would be passed to Tera for template rendering.
 /// The order of struct fields is deremined to ensure sorting precedence.
@@ -46,86 +50,80 @@ pub struct Item {
 /// Run the server.
 pub async fn serve(args: Args) -> BoxResult<()> {
     let address = args.address()?;
-    let builder = hyper::Server::try_bind(&address)?; // TODO: handle socket binding error message
-    let make_svc = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(handler)) });
-    let server = builder.serve(make_svc);
+    let inner = Arc::new(InnerService::new(args));
+    let make_svc = make_service_fn(move |_| {
+        let inner = inner.clone();
+        async {
+            Ok::<_, Infallible>(service_fn(move |req| {
+                let inner = inner.clone();
+                inner.call(req)
+            }))
+        }
+    });
+
+    let server = Server::try_bind(&address)?
+        .serve(make_svc); 
     let address = server.local_addr();
     println!("Files served on http://{}", address);
     server.await?;
+
     Ok(())
 }
 
-async fn handler(
-    req: hyper::Request<hyper::Body>,
-) -> Result<hyper::Response<hyper::Body>, hyper::http::Error> {
-    static NOTFOUND: &[u8] = b"Not Found";
-    hyper::Response::builder()
-        .status(hyper::StatusCode::NOT_FOUND)
-        .body(NOTFOUND.into())
+struct InnerService {
+    args: Args,
+    gitignore: Gitignore,
 }
 
-// struct MyService {
-//     args: Arc<Args>,
-//     gitignore: Gitignore,
-// }
+impl InnerService {
+    pub fn new(args: Args) -> Self {
+        let gitignore = Gitignore::new(args.path.join(".gitignore")).0;
+        Self { args, gitignore }
+    }
 
-// impl Service for MyService {
-//     type Request = Request;
-//     type Response = Response;
-//     type Error = Error;
-//     type Future = Box<dyn Future<Item = Self::Response, Error = Self::Error>>;
-//
-//     fn call(&self, req: Self::Request) -> Self::Future {
-//         let res = match self.handle_request(&req) {
-//             Ok(res) => res,
-//             Err(_) => res::internal_server_error(Response::new()),
-//         };
-//         // Logging
-//         if self.args.log {
-//             println!(
-//                 r#"[{}] "{} {}" - {}"#,
-//                 Local::now().format("%d/%b/%Y %H:%M:%S"),
-//                 req.method(),
-//                 req.uri(),
-//                 res.status(),
-//             );
-//         }
-//         // Returning response
-//         Box::new(futures::future::ok(res))
-//     }
-// }
+    pub async fn call(self: Arc<Self>, req: Request) -> Result<Response, hyper::Error> {
+        let res = self.handle_request(&req).unwrap_or(
+            res::internal_server_error(Response::new("".into()))
+        );
+        // Logging
+        if self.args.log {
+            println!(
+                r#"[{}] "{} {}" - {}"#,
+                Local::now().format("%d/%b/%Y %H:%M:%S"),
+                req.method(),
+                req.uri(),
+                res.status(),
+            );
+        }
+        // Returning response
+        Ok(res)
+    }
 
-// impl MyService {
-//     pub fn new(args: Arc<Args>) -> Self {
-//         let gitignore = Gitignore::new(args.path.join(".gitignore")).0;
-//         Self { args, gitignore }
-//     }
-//
-//     /// Construct file path from request path.
-//     ///
-//     /// 1. Remove leading slash.
-//     /// 2. Strip path prefix if defined
-//     /// 3. URI percent decode.
-//     /// 4. Concatenate base path and requested path.
-//     fn file_path_from_path(&self, path: &str) -> Result<Option<PathBuf>, Utf8Error> {
-//         let decoded = percent_decode(path[1..].as_bytes())
-//             .decode_utf8()?
-//             .into_owned();
-//
-//         let stripped_path = match self.strip_path_prefix(&decoded) {
-//             Some(path) => path,
-//             None => return Ok(None),
-//         };
-//
-//         let mut path = self.args.path.join(stripped_path);
-//         if self.args.render_index && path.is_dir() {
-//             path.push("index.html")
-//         }
-//
-//         Ok(Some(path))
-//     }
-//
-//     /// Enable HTTP cache control (current always enable with max-age=0)
+     /// Construct file path from request path.
+     ///
+     /// 1. Remove leading slash.
+     /// 2. Strip path prefix if defined
+     /// 3. URI percent decode.
+     /// 4. Concatenate base path and requested path.
+     fn file_path_from_path(&self, path: &str) -> Result<Option<PathBuf>, Utf8Error> {
+         let decoded = percent_decode(path[1..].as_bytes())
+             .decode_utf8()?
+             .into_owned();
+
+         let stripped_path = match self.strip_path_prefix(&decoded) {
+             Some(path) => path,
+             None => return Ok(None),
+         };
+
+         let mut path = self.args.path.join(stripped_path);
+         if self.args.render_index && path.is_dir() {
+             path.push("index.html")
+         }
+
+         Ok(Some(path))
+     }
+
+     /// Enable HTTP cache control (current always enable with max-age=0)
 //     fn enable_cache_control(&self, res: &mut Response) {
 //         res.headers_mut().set(CacheControl(vec![
 //             CacheDirective::Public,
@@ -161,74 +159,75 @@ async fn handler(
 //     fn can_compress(&self, status: StatusCode, mime: &mime::Mime) -> bool {
 //         self.args.compress && status != StatusCode::PartialContent && !mime.is_compressed_format()
 //     }
-//
-//     /// Determine critera if given path exists or not.
-//     ///
-//     /// A path exists if matches all rules below:
-//     ///
-//     /// 1. exists
-//     /// 2. is not hidden
-//     /// 3. is not ignored
-//     fn path_exists<P: AsRef<Path>>(&self, path: P) -> bool {
-//         let path = path.as_ref();
-//         path.exists() && !self.path_is_hidden(path) && !self.path_is_ignored(path)
-//     }
-//
-//     /// Determine if given path is hidden.
-//     ///
-//     /// A path is considered as hidden if matches all rules below:
-//     ///
-//     /// 1. `all` arg is false
-//     /// 2. is hidden (prefixed with dot `.`)
-//     fn path_is_hidden<P: AsRef<Path>>(&self, path: P) -> bool {
-//         !self.args.all && path.as_ref().is_hidden()
-//     }
-//
-//     /// Determine if given path is ignored.
-//     ///
-//     /// A path is considered as ignored if matches all rules below:
-//     ///
-//     /// 1. `ignore` arg is true
-//     /// 2. matches any rules in .gitignore
-//     fn path_is_ignored<P: AsRef<Path>>(&self, path: P) -> bool {
-//         let path = path.as_ref();
-//         self.args.ignore && self.gitignore.matched(path, path.is_dir()).is_ignore()
-//     }
-//
-//     /// Check if requested resource is under directory of basepath.
-//     ///
-//     /// The given path must be resolved (canonicalized) to eliminate
-//     /// incorrect path reported by symlink path.
-//     fn path_is_under_basepath<P: AsRef<Path>>(&self, path: P) -> bool {
-//         let path = path.as_ref();
-//         match path.canonicalize() {
-//             Ok(path) => path.starts_with(&self.args.path),
-//             Err(_) => false,
-//         }
-//     }
-//
-//     /// strip the path prefix of the request path
-//     ///
-//     /// if there is a path prefix defined and strip_prefix returns None return None
-//     /// else return the path with the prefix stripped
-//     fn strip_path_prefix<'a, T: AsRef<Path>>(&self, path: &'a T) -> Option<&'a Path> {
-//         match self.args.path_prefix.as_deref() {
-//             Some(mut path_prefix) => {
-//                 if path_prefix.starts_with('/') {
-//                     path_prefix = &path_prefix[1..];
-//                 }
-//
-//                 match path.as_ref().strip_prefix(path_prefix) {
-//                     Ok(path) => Some(path),
-//                     Err(_) => None,
-//                 }
-//             }
-//             None => Some(path.as_ref()),
-//         }
-//     }
-//
-//     /// Request handler for `MyService`.
-//     fn handle_request(&self, req: &Request) -> BoxResult<Response> {
+
+     /// Determine critera if given path exists or not.
+     ///
+     /// A path exists if matches all rules below:
+     ///
+     /// 1. exists
+     /// 2. is not hidden
+     /// 3. is not ignored
+     fn path_exists<P: AsRef<Path>>(&self, path: P) -> bool {
+         let path = path.as_ref();
+         path.exists() && !self.path_is_hidden(path) && !self.path_is_ignored(path)
+     }
+
+     /// Determine if given path is hidden.
+     ///
+     /// A path is considered as hidden if matches all rules below:
+     ///
+     /// 1. `all` arg is false
+     /// 2. is hidden (prefixed with dot `.`)
+     fn path_is_hidden<P: AsRef<Path>>(&self, path: P) -> bool {
+         !self.args.all && path.as_ref().is_hidden()
+     }
+
+     /// Determine if given path is ignored.
+     ///
+     /// A path is considered as ignored if matches all rules below:
+     ///
+     /// 1. `ignore` arg is true
+     /// 2. matches any rules in .gitignore
+     fn path_is_ignored<P: AsRef<Path>>(&self, path: P) -> bool {
+         let path = path.as_ref();
+         self.args.ignore && self.gitignore.matched(path, path.is_dir()).is_ignore()
+     }
+
+     /// Check if requested resource is under directory of basepath.
+     ///
+     /// The given path must be resolved (canonicalized) to eliminate
+     /// incorrect path reported by symlink path.
+     fn path_is_under_basepath<P: AsRef<Path>>(&self, path: P) -> bool {
+         let path = path.as_ref();
+         match path.canonicalize() {
+             Ok(path) => path.starts_with(&self.args.path),
+             Err(_) => false,
+         }
+     }
+
+     /// strip the path prefix of the request path
+     ///
+     /// if there is a path prefix defined and strip_prefix returns None return None
+     /// else return the path with the prefix stripped
+     fn strip_path_prefix<'a, T: AsRef<Path>>(&self, path: &'a T) -> Option<&'a Path> {
+         match self.args.path_prefix.as_deref() {
+             Some(mut path_prefix) => {
+                 if path_prefix.starts_with('/') {
+                     path_prefix = &path_prefix[1..];
+                 }
+
+                 match path.as_ref().strip_prefix(path_prefix) {
+                     Ok(path) => Some(path),
+                     Err(_) => None,
+                 }
+             }
+             None => Some(path.as_ref()),
+         }
+     }
+
+     /// Request handler for `MyService`.
+     fn handle_request(&self, req: &Request) -> BoxResult<Response> {
+         todo!()
 //         // Construct response.
 //         let mut res = Response::new();
 //         res.headers_mut().set(Server::new(SERVER_VERSION));
@@ -335,19 +334,19 @@ async fn handler(
 //         res.headers_mut().set(ContentLength(body.len() as u64));
 //
 //         Ok(res.with_body(body))
-//     }
-//
-//     fn guess_path_mime<P: AsRef<Path>>(path: P) -> mime::Mime {
-//         let path = path.as_ref();
-//         path.mime().unwrap_or_else(|| {
-//             if path.is_dir() {
-//                 mime::TEXT_HTML_UTF_8
-//             } else {
-//                 mime::TEXT_PLAIN_UTF_8
-//             }
-//         })
-//     }
-// }
+     }
+
+     fn guess_path_mime<P: AsRef<Path>>(path: P) -> mime::Mime {
+         let path = path.as_ref();
+         path.mime().unwrap_or_else(|| {
+             if path.is_dir() {
+                 mime::TEXT_HTML_UTF_8
+             } else {
+                 mime::TEXT_PLAIN_UTF_8
+             }
+         })
+     }
+}
 
 // #[cfg(test)]
 // mod tests {

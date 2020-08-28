@@ -24,11 +24,14 @@ pub type BoxResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 #[tokio::main]
 async fn main() {
-    let args = Args::parse(app()).unwrap_or_else(handle_err);
-    serve(args).await.unwrap_or_else(handle_err);
+    Args::parse(app())
+        .map(serve)
+        .unwrap_or_else(handle_err)
+        .await
+        .unwrap_or_else(handle_err);
 }
 
 fn handle_err<T>(err: Box<dyn std::error::Error>) -> T {
-    dbg!(err);
+    eprintln!("Server error: {}", err);
     std::process::exit(1);
 }
