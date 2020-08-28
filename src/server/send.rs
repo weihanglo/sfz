@@ -147,15 +147,83 @@ pub fn send_file_with_range<P: AsRef<Path>>(
 ) -> io::Result<Vec<u8>> {
     use std::io::prelude::*;
     use std::io::SeekFrom;
-    let (start, end) = range; // TODO: handle end - start < 0
-    if end <= start {
-        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    let (start, end) = range; // TODO: should return HTTP 416
+    if end < start {
+        return Err(io::Error::from(io::ErrorKind::InvalidInput));
     }
     let mut f = File::open(file_path)?;
     let mut buffer = Vec::new();
     f.seek(SeekFrom::Start(start))?;
     BufReader::new(f)
-        .take(end - start)
+        .take(end - start + 1)
         .read_to_end(&mut buffer)?;
     Ok(buffer)
+}
+
+#[cfg(test)]
+mod t_send {
+    use super::*;
+
+    fn file_txt_path() -> std::path::PathBuf {
+        let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("./tests/file.txt");
+        path
+    }
+
+    fn missing_file_path() -> std::path::PathBuf {
+        let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("./missing/file");
+        path
+    }
+
+    #[ignore]
+    #[test]
+    fn t_send_dir() {}
+
+    #[test]
+    fn t_send_file_success() {
+        let buf = send_file(file_txt_path());
+        assert_eq!(&buf.unwrap(), b"01234567");
+    }
+
+    #[test]
+    fn t_send_file_not_found() {
+        let buf = send_file(missing_file_path());
+        assert_eq!(buf.unwrap_err().kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn t_send_file_with_range_one_byte() {
+        for i in 0..=7 {
+            let buf = send_file_with_range(file_txt_path(), (i, i));
+            assert_eq!(buf.unwrap(), i.to_string().as_bytes());
+        }
+    }
+
+    #[test]
+    fn t_send_file_with_range_multiple_bytes() {
+        let buf = send_file_with_range(file_txt_path(), (0, 1));
+        assert_eq!(buf.unwrap(), b"01");
+        let buf = send_file_with_range(file_txt_path(), (1, 2));
+        assert_eq!(buf.unwrap(), b"12");
+        let buf = send_file_with_range(file_txt_path(), (1, 4));
+        assert_eq!(buf.unwrap(), b"1234");
+        let buf = send_file_with_range(file_txt_path(), (7, 65535));
+        assert_eq!(buf.unwrap(), b"7");
+        let buf = send_file_with_range(file_txt_path(), (8, 8));
+        assert_eq!(buf.unwrap(), b"");
+    }
+
+    #[test]
+    fn t_send_file_with_range_not_found() {
+        let buf = send_file_with_range(missing_file_path(), (0, 0));
+        assert_eq!(buf.unwrap_err().kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn t_send_file_with_range_invalid_range() {
+        // TODO: HTTP code 416
+        let buf = send_file_with_range(file_txt_path(), (1, 0));
+        assert_eq!(buf.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+    }
 }
