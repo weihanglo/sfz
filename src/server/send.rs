@@ -57,11 +57,7 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
             .into_iter()
             .chain(path_names.zip(abs_paths))
             .map(|mut p| {
-                p.1 = format!(
-                    "{}{}",
-                    prefix,
-                    if p.1.is_empty() { "/" } else { &p.1 },
-                );
+                p.1 = format!("{}{}", prefix, if p.1.is_empty() { "/" } else { &p.1 },);
                 p
             })
             .collect::<Vec<_>>();
