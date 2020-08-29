@@ -280,7 +280,7 @@ impl InnerService {
             let last_modified = LastModified::from(mtime);
             // Concatenate _modified time_ and _file size_ to
             // form a (nearly) strong validator.
-            let etag = format!("{}-{}", mtime.timestamp(), size)
+            let etag = format!(r#""{}-{}""#, mtime.timestamp(), size)
                 .parse::<ETag>()
                 .unwrap();
 
