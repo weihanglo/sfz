@@ -597,10 +597,10 @@ mod t_server {
 
     #[test]
     fn path_is_under_basepath() {
-        #[cfg(windows)]
-        use std::os::windows::fs::symlink_file;
         #[cfg(unix)]
         use std::os::unix::fs::symlink as symlink_file;
+        #[cfg(windows)]
+        use std::os::windows::fs::symlink_file;
 
         let src_dir = TempDir::new(temp_name()).unwrap();
         let src_dir = src_dir.path().canonicalize().unwrap();
