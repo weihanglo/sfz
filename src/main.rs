@@ -14,7 +14,7 @@ macro_rules! bail {
 
 mod cli;
 mod extensions;
-// mod http;
+mod http;
 mod server;
 
 use crate::cli::{app, Args};
