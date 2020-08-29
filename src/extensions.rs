@@ -9,8 +9,7 @@
 use std::path::Path;
 use std::time::SystemTime;
 
-use hyper::mime::{self, Mime};
-use mime_guess;
+use mime_guess::{mime, Mime};
 use serde::Serialize;
 
 /// Indicate that a path is a normal file/dir or a symlink to another path/dir.
@@ -43,8 +42,8 @@ impl PathExt for Path {
     /// Check if path is hidden.
     fn is_hidden(&self) -> bool {
         self.file_name()
-            .and_then(|s| s.to_str())
-            .map(|s| s.starts_with("."))
+            .and_then(std::ffi::OsStr::to_str)
+            .map(|s| s.starts_with('.'))
             .unwrap_or(false)
     }
 
@@ -53,12 +52,12 @@ impl PathExt for Path {
         self.metadata().and_then(|meta| meta.modified()).unwrap()
     }
 
-    /// Get file size from a path.
+    /// Get file size, in bytes, from a path.
     fn size(&self) -> u64 {
         self.metadata().map(|meta| meta.len()).unwrap_or_default()
     }
 
-    /// Get a filename `String` from a path.
+    /// Get a filename `&str` from a path.
     fn filename_str(&self) -> &str {
         self.file_name()
             .and_then(|s| s.to_str())
@@ -67,22 +66,18 @@ impl PathExt for Path {
 
     /// Determine given path is a normal file/directory or a symlink.
     fn type_(&self) -> PathType {
-        if let Ok(meta) = self.symlink_metadata() {
-            return if meta.file_type().is_symlink() {
-                if self.is_dir() {
-                    PathType::SymlinkDir
-                } else {
-                    PathType::SymlinkFile
+        self.symlink_metadata()
+            .map(|meta| {
+                let is_symlink = meta.file_type().is_symlink();
+                let is_dir = self.is_dir();
+                match (is_symlink, is_dir) {
+                    (true, true) => PathType::SymlinkDir,
+                    (false, true) => PathType::Dir,
+                    (true, false) => PathType::SymlinkFile,
+                    (false, false) => PathType::File,
                 }
-            } else {
-                if self.is_dir() {
-                    PathType::Dir
-                } else {
-                    PathType::File
-                }
-            };
-        }
-        PathType::File
+            })
+            .unwrap_or(PathType::File)
     }
 }
 
@@ -93,7 +88,7 @@ pub trait SystemTimeExt {
 impl SystemTimeExt for SystemTime {
     /// Convert `SystemTime` to timestamp in seconds.
     fn timestamp(&self) -> u64 {
-        self.duration_since(::std::time::UNIX_EPOCH)
+        self.duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs()
     }
@@ -121,8 +116,75 @@ impl MimeExt for Mime {
 }
 
 #[cfg(test)]
-mod t {
+mod t_extensions {
     use super::*;
+
+    fn file_txt_path() -> std::path::PathBuf {
+        let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("./tests/file.txt");
+        path
+    }
+
+    fn hidden_html_path() -> std::path::PathBuf {
+        let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("./tests/.hidden.html");
+        path
+    }
+
+    #[test]
+    fn path_mime() {
+        assert_eq!(file_txt_path().mime(), Some(mime::TEXT_PLAIN));
+        assert_eq!(hidden_html_path().mime(), Some(mime::TEXT_HTML));
+    }
+
+    #[test]
+    fn path_is_hidden() {
+        assert_eq!(file_txt_path().is_hidden(), false);
+        assert_eq!(hidden_html_path().is_hidden(), true);
+    }
+
+    #[ignore]
+    #[test]
+    fn path_mtime() {}
+
+    #[test]
+    fn path_size() {
+        assert_eq!(file_txt_path().size(), 8);
+        assert_eq!(hidden_html_path().size(), 0);
+    }
+
+    #[test]
+    fn path_filename_str() {
+        assert_eq!(file_txt_path().filename_str(), "file.txt");
+        assert_eq!(hidden_html_path().filename_str(), ".hidden.html");
+    }
+
+    #[test]
+    fn path_type_() {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+        let mut dir_path = path.clone();
+        dir_path.push("./tests/dir");
+        assert_eq!(dir_path.type_(), PathType::Dir);
+
+        let mut symlink_dir_path = path.clone();
+        symlink_dir_path.push("./tests/symlink_dir");
+        assert_eq!(symlink_dir_path.type_(), PathType::SymlinkDir);
+
+        assert_eq!(file_txt_path().type_(), PathType::File);
+
+        let mut symlink_file_txt_path = path.clone();
+        symlink_file_txt_path.push("./tests/symlink_file.txt");
+        assert_eq!(symlink_file_txt_path.type_(), PathType::SymlinkFile);
+    }
+
+    #[test]
+    fn system_time_to_timestamp() {
+        use std::time::Duration;
+        let secs = 1000;
+        let tm = SystemTime::UNIX_EPOCH + Duration::from_secs(secs);
+        assert_eq!(tm.timestamp(), secs);
+    }
 
     #[test]
     fn mime_is_compressed() {

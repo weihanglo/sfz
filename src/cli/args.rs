@@ -19,7 +19,7 @@ use crate::BoxResult;
 pub struct Args {
     pub address: String,
     pub port: u16,
-    pub cache: u32,
+    pub cache: u64,
     pub cors: bool,
     pub compress: bool,
     pub path: PathBuf,
@@ -40,7 +40,7 @@ impl Args {
         let matches = app.get_matches();
         let address = matches.value_of("address").unwrap_or_default().to_owned();
         let port = value_t!(matches.value_of("port"), u16)?;
-        let cache = value_t!(matches.value_of("cache"), u32)?;
+        let cache = value_t!(matches.value_of("cache"), u64)?;
         let cors = matches.is_present("cors");
         let path = matches.value_of("path").unwrap_or_default();
         let path = Args::parse_path(path)?;

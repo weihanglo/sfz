@@ -17,22 +17,21 @@ mod extensions;
 mod http;
 mod server;
 
-use std::error::Error;
-use std::process;
-use std::sync::Arc;
-
 use crate::cli::{app, Args};
 use crate::server::serve;
 
-pub type BoxResult<T> = Result<T, Box<dyn Error>>;
+pub type BoxResult<T> = Result<T, Box<dyn std::error::Error>>;
 
-fn main() {
-    let result = Args::parse(app()).map(Arc::new).and_then(serve);
-    match result {
-        Ok(_) => (),
-        Err(err) => {
-            dbg!(err);
-            process::exit(1)
-        }
-    }
+#[tokio::main]
+async fn main() {
+    Args::parse(app())
+        .map(serve)
+        .unwrap_or_else(handle_err)
+        .await
+        .unwrap_or_else(handle_err);
+}
+
+fn handle_err<T>(err: Box<dyn std::error::Error>) -> T {
+    eprintln!("Server error: {}", err);
+    std::process::exit(1);
 }

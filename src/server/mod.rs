@@ -9,36 +9,37 @@
 mod res;
 mod send;
 
-use std::convert::AsRef;
+use std::convert::{AsRef, Infallible};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::str::Utf8Error;
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::Local;
-use futures;
-use futures::future::Future;
-use hyper::header::{
-    AcceptRanges, AccessControlAllowHeaders, AccessControlAllowOrigin, CacheControl,
-    CacheDirective, ContentEncoding, ContentLength, ContentType, ETag, EntityTag, LastModified,
-    Range, RangeUnit, Server, Vary,
+use headers::{
+    AcceptRanges, AccessControlAllowHeaders, AccessControlAllowOrigin, CacheControl, ContentLength,
+    ContentType, ETag, HeaderMapExt, LastModified, Range, Server,
 };
-use hyper::server::{Http, Request, Response, Service};
-use hyper::{mime, Error, StatusCode};
+use hyper::service::{make_service_fn, service_fn};
+use hyper::StatusCode;
 use ignore::gitignore::Gitignore;
+use mime_guess::mime;
 use percent_encoding::percent_decode;
 use serde::Serialize;
-use unicase::Ascii;
 
 use self::send::{send_dir, send_file, send_file_with_range};
 use crate::cli::Args;
 use crate::extensions::{MimeExt, PathExt, PathType, SystemTimeExt};
 use crate::http::conditional_requests::{is_fresh, is_precondition_failed};
 use crate::http::content_encoding::{compress, get_prior_encoding};
-use crate::http::range_requests::{extract_range, is_range_fresh, is_satisfiable_range};
+use crate::http::range_requests::{is_range_fresh, is_satisfiable_range};
 use crate::BoxResult;
 
 const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+
+pub type Request = hyper::Request<hyper::Body>;
+pub type Response = hyper::Response<hyper::Body>;
 
 /// Serializable `Item` that would be passed to Tera for template rendering.
 /// The order of struct fields is deremined to ensure sorting precedence.
@@ -50,35 +51,44 @@ pub struct Item {
 }
 
 /// Run the server.
-pub fn serve(args: Arc<Args>) -> BoxResult<()> {
+pub async fn serve(args: Args) -> BoxResult<()> {
     let address = args.address()?;
-    Http::new()
-        .bind(&address, move || Ok(MyService::new(args.to_owned())))
-        .and_then(|server| {
-            let address = server.local_addr()?;
-            println!("Files served on http://{}", address);
-            server.run()
-        })
-        .or_else(|err| bail!("error: cannot establish server: {}", err))
+    let inner = Arc::new(InnerService::new(args));
+    let make_svc = make_service_fn(move |_| {
+        let inner = inner.clone();
+        async {
+            Ok::<_, Infallible>(service_fn(move |req| {
+                let inner = inner.clone();
+                inner.call(req)
+            }))
+        }
+    });
+
+    let server = hyper::Server::try_bind(&address)?.serve(make_svc);
+    let address = server.local_addr();
+    println!("Files served on http://{}", address);
+    server.await?;
+
+    Ok(())
 }
 
-struct MyService {
-    args: Arc<Args>,
+struct InnerService {
+    args: Args,
     gitignore: Gitignore,
 }
 
-impl Service for MyService {
-    type Request = Request;
-    type Response = Response;
-    type Error = Error;
-    type Future = Box<dyn Future<Item = Self::Response, Error = Self::Error>>;
+impl InnerService {
+    pub fn new(args: Args) -> Self {
+        let gitignore = Gitignore::new(args.path.join(".gitignore")).0;
+        Self { args, gitignore }
+    }
 
-    fn call(&self, req: Self::Request) -> Self::Future {
-        let res = match self.handle_request(&req) {
-            Ok(res) => res,
-            Err(_) => res::internal_server_error(Response::new()),
-        };
+    pub async fn call(self: Arc<Self>, req: Request) -> Result<Response, hyper::Error> {
+        let res = self
+            .handle_request(&req)
+            .unwrap_or_else(|_| res::internal_server_error(Response::default()));
         // Logging
+        // TODO: use proper logging crate
         if self.args.log {
             println!(
                 r#"[{}] "{} {}" - {}"#,
@@ -89,14 +99,7 @@ impl Service for MyService {
             );
         }
         // Returning response
-        Box::new(futures::future::ok(res))
-    }
-}
-
-impl MyService {
-    pub fn new(args: Arc<Args>) -> Self {
-        let gitignore = Gitignore::new(args.path.join(".gitignore")).0;
-        Self { args, gitignore }
+        Ok(res)
     }
 
     /// Construct file path from request path.
@@ -125,22 +128,27 @@ impl MyService {
 
     /// Enable HTTP cache control (current always enable with max-age=0)
     fn enable_cache_control(&self, res: &mut Response) {
-        res.headers_mut().set(CacheControl(vec![
-            CacheDirective::Public,
-            CacheDirective::MaxAge(self.args.cache),
-        ]));
+        let header = CacheControl::new()
+            .with_public()
+            .with_max_age(Duration::from_secs(self.args.cache));
+        res.headers_mut().typed_insert(header);
     }
 
     /// Enable cross-origin resource sharing for given response.
     fn enable_cors(&self, res: &mut Response) {
         if self.args.cors {
-            res.headers_mut().set(AccessControlAllowOrigin::Any);
-            res.headers_mut().set(AccessControlAllowHeaders(vec![
-                Ascii::new("Range".to_owned()),
-                Ascii::new("Content-Type".to_owned()),
-                Ascii::new("Accept".to_owned()),
-                Ascii::new("Origin".to_owned()),
-            ]));
+            res.headers_mut()
+                .typed_insert(AccessControlAllowOrigin::ANY);
+            res.headers_mut().typed_insert(
+                vec![
+                    hyper::header::RANGE,
+                    hyper::header::CONTENT_TYPE,
+                    hyper::header::ACCEPT,
+                    hyper::header::ORIGIN,
+                ]
+                .into_iter()
+                .collect::<AccessControlAllowHeaders>(),
+            );
         }
     }
 
@@ -157,7 +165,7 @@ impl MyService {
     /// * `status` - Current status code prepared to respond.
     /// * `mime` - MIME type of the payload.
     fn can_compress(&self, status: StatusCode, mime: &mime::Mime) -> bool {
-        self.args.compress && status != StatusCode::PartialContent && !mime.is_compressed_format()
+        self.args.compress && status != StatusCode::PARTIAL_CONTENT && !mime.is_compressed_format()
     }
 
     /// Determine critera if given path exists or not.
@@ -205,10 +213,10 @@ impl MyService {
         }
     }
 
-    /// strip the path prefix of the request path
+    /// Strip the path prefix of the request path.
     ///
-    /// if there is a path prefix defined and strip_prefix returns None return None
-    /// else return the path with the prefix stripped
+    /// If there is a path prefix defined and `strip_prefix` returns `None`,
+    /// return None. Otherwise return the path with the prefix stripped.
     fn strip_path_prefix<'a, T: AsRef<Path>>(&self, path: &'a T) -> Option<&'a Path> {
         match self.args.path_prefix.as_deref() {
             Some(mut path_prefix) => {
@@ -228,10 +236,11 @@ impl MyService {
     /// Request handler for `MyService`.
     fn handle_request(&self, req: &Request) -> BoxResult<Response> {
         // Construct response.
-        let mut res = Response::new();
-        res.headers_mut().set(Server::new(SERVER_VERSION));
+        let mut res = Response::default();
+        res.headers_mut()
+            .typed_insert(Server::from_static(SERVER_VERSION));
 
-        let path = match self.file_path_from_path(req.path())? {
+        let path = match self.file_path_from_path(req.uri().path())? {
             Some(path) => path,
             None => return Ok(res::not_found(res)),
         };
@@ -269,36 +278,38 @@ impl MyService {
 
             // Last-Modified-Time from file metadata _mtime_.
             let (mtime, size) = (path.mtime(), path.size());
-            let last_modified = LastModified(mtime.into());
+            let last_modified = LastModified::from(mtime);
             // Concatenate _modified time_ and _file size_ to
             // form a (nearly) strong validator.
-            let etag = ETag(EntityTag::strong(format!("{}-{}", mtime.timestamp(), size)));
+            let etag = format!(r#""{}-{}""#, mtime.timestamp(), size)
+                .parse::<ETag>()
+                .unwrap();
 
             // Validate preconditions of conditional requests.
-            if is_precondition_failed(&req, &etag, &last_modified) {
+            if is_precondition_failed(&req, &etag, mtime) {
                 return Ok(res::precondition_failed(res));
             }
 
             // Validate cache freshness.
-            if is_fresh(&req, &etag, &last_modified) {
-                return Ok(res::not_modified(res)
-                    .with_header(last_modified)
-                    .with_header(etag));
+            if is_fresh(&req, &etag, mtime) {
+                res.headers_mut().typed_insert(last_modified);
+                res.headers_mut().typed_insert(etag);
+                return Ok(res::not_modified(res));
             }
 
             // Range Request support.
-            if let Some(range) = req.headers().get::<Range>() {
+            if let Some(range) = req.headers().typed_get::<Range>() {
                 match (
                     is_range_fresh(&req, &etag, &last_modified),
-                    is_satisfiable_range(range, size as u64),
+                    is_satisfiable_range(&range, size as u64),
                 ) {
                     (true, Some(content_range)) => {
                         // 206 Partial Content.
-                        if let Some(range) = extract_range(&content_range) {
+                        if let Some(range) = content_range.bytes_range() {
                             body = send_file_with_range(&path, range);
                         }
-                        res.headers_mut().set(content_range);
-                        res.set_status(StatusCode::PartialContent);
+                        res.headers_mut().typed_insert(content_range);
+                        *res.status_mut() = StatusCode::PARTIAL_CONTENT;
                     }
                     // Respond entire entity if Range header contains
                     // unsatisfiable range.
@@ -306,33 +317,45 @@ impl MyService {
                 }
             }
 
-            if res.status() != StatusCode::PartialContent {
+            if res.status() != StatusCode::PARTIAL_CONTENT {
                 body = send_file(&path);
             }
-            res.headers_mut().set(last_modified);
-            res.headers_mut().set(etag);
+            res.headers_mut().typed_insert(last_modified);
+            res.headers_mut().typed_insert(etag);
         }
 
         let mut body = body?;
-        let mime_type = MyService::guess_path_mime(&path);
+        let mime_type = InnerService::guess_path_mime(&path);
 
         if self.can_compress(res.status(), &mime_type) {
-            let encoding = get_prior_encoding(&req);
-            if let Ok(buf) = compress(&body, &encoding) {
+            let encoding = res
+                .headers()
+                .get(hyper::header::ACCEPT_ENCODING)
+                .map(get_prior_encoding)
+                .unwrap_or_default();
+            // No Accept-Encoding would not be compress.
+            if let Ok(buf) = compress(&body, encoding) {
                 body = buf;
+                res.headers_mut().insert(
+                    hyper::header::CONTENT_ENCODING,
+                    hyper::header::HeaderValue::from_static(encoding),
+                );
                 // Representation varies, so responds with a `Vary` header.
-                res.headers_mut().set(ContentEncoding(vec![encoding]));
-                res.headers_mut()
-                    .set(Vary::Items(vec![Ascii::new("Accept-Encoding".to_owned())]));
+                res.headers_mut().insert(
+                    hyper::header::VARY,
+                    hyper::header::HeaderValue::from_name(hyper::header::ACCEPT_ENCODING),
+                );
             }
         }
 
         // Common headers
-        res.headers_mut().set(AcceptRanges(vec![RangeUnit::Bytes]));
-        res.headers_mut().set(ContentType(mime_type));
-        res.headers_mut().set(ContentLength(body.len() as u64));
+        res.headers_mut().typed_insert(AcceptRanges::bytes());
+        res.headers_mut().typed_insert(ContentType::from(mime_type));
+        res.headers_mut()
+            .typed_insert(ContentLength(body.len() as u64));
 
-        Ok(res.with_body(body))
+        *res.body_mut() = body.into();
+        Ok(res)
     }
 
     fn guess_path_mime<P: AsRef<Path>>(path: P) -> mime::Mime {
@@ -348,7 +371,7 @@ impl MyService {
 }
 
 #[cfg(test)]
-mod tests {
+mod t_server {
     use super::*;
     use std::fs::File;
     use tempdir::TempDir;
@@ -372,8 +395,8 @@ mod tests {
         }
     }
 
-    fn bootstrap(args: Args) -> (MyService, Response) {
-        (MyService::new(Arc::new(args)), Response::new())
+    fn bootstrap(args: Args) -> (InnerService, Response) {
+        (InnerService::new(args), Response::default())
     }
 
     fn temp_name() -> &'static str {
@@ -409,24 +432,37 @@ mod tests {
 
     #[test]
     fn guess_path_mime() {
-        use std::env;
-        let mime_type = MyService::guess_path_mime("file-wthout-extension");
+        let mime_type = InnerService::guess_path_mime("file-wthout-extension");
         assert_eq!(mime_type, mime::TEXT_PLAIN_UTF_8);
 
-        let mime_type = MyService::guess_path_mime(env::home_dir().unwrap());
+        let dir_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let mime_type = InnerService::guess_path_mime(dir_path);
         assert_eq!(mime_type, mime::TEXT_HTML_UTF_8);
     }
 
     #[test]
     fn enable_cors() {
-        let args = Args {
-            ..Default::default()
-        };
+        let args = Args::default();
         let (service, mut res) = bootstrap(args);
         service.enable_cors(&mut res);
         assert_eq!(
-            *res.headers().get::<AccessControlAllowOrigin>().unwrap(),
-            AccessControlAllowOrigin::Any,
+            res.headers()
+                .typed_get::<AccessControlAllowOrigin>()
+                .unwrap(),
+            AccessControlAllowOrigin::ANY,
+        );
+        assert_eq!(
+            res.headers()
+                .typed_get::<AccessControlAllowHeaders>()
+                .unwrap(),
+            vec![
+                hyper::header::RANGE,
+                hyper::header::CONTENT_TYPE,
+                hyper::header::ACCEPT,
+                hyper::header::ORIGIN,
+            ]
+            .into_iter()
+            .collect::<AccessControlAllowHeaders>(),
         );
     }
 
@@ -438,26 +474,44 @@ mod tests {
         };
         let (service, mut res) = bootstrap(args);
         service.enable_cors(&mut res);
-        assert!(!res.headers().has::<AccessControlAllowOrigin>());
+        assert!(res
+            .headers()
+            .typed_get::<AccessControlAllowOrigin>()
+            .is_none());
     }
 
     #[test]
     fn enable_cache_control() {
+        let args = Args::default();
+        let (service, mut res) = bootstrap(args);
+        service.enable_cache_control(&mut res);
+        assert_eq!(
+            res.headers().typed_get::<CacheControl>().unwrap(),
+            CacheControl::new()
+                .with_public()
+                .with_max_age(Duration::default()),
+        );
+
+        let cache = 3600;
         let args = Args {
+            cache,
             ..Default::default()
         };
         let (service, mut res) = bootstrap(args);
         service.enable_cache_control(&mut res);
-        assert!(res.headers().has::<CacheControl>());
+        assert_eq!(
+            res.headers().typed_get::<CacheControl>().unwrap(),
+            CacheControl::new()
+                .with_public()
+                .with_max_age(Duration::from_secs(3600)),
+        );
     }
 
     #[test]
     fn can_compress() {
-        let args = Args {
-            ..Default::default()
-        };
+        let args = Args::default();
         let (service, _) = bootstrap(args);
-        assert!(service.can_compress(StatusCode::Ok, &mime::TEXT_PLAIN));
+        assert!(service.can_compress(StatusCode::OK, &mime::TEXT_PLAIN));
     }
 
     #[test]
@@ -467,20 +521,26 @@ mod tests {
             ..Default::default()
         };
         let (service, _) = bootstrap(args);
-        assert!(!service.can_compress(StatusCode::Ok, &mime::TEXT_PLAIN));
+        assert!(!service.can_compress(StatusCode::OK, &mime::STAR_STAR));
+        assert!(!service.can_compress(StatusCode::OK, &mime::TEXT_PLAIN));
+        assert!(!service.can_compress(StatusCode::OK, &mime::IMAGE_JPEG));
 
-        let args = Args {
-            ..Default::default()
-        };
+        let args = Args::default();
         let (service, _) = bootstrap(args);
-        assert!(!service.can_compress(StatusCode::PartialContent, &mime::STAR_STAR,));
-        assert!(!service.can_compress(StatusCode::Ok, &"video/*".parse::<mime::Mime>().unwrap(),));
-        assert!(!service.can_compress(StatusCode::Ok, &"audio/*".parse::<mime::Mime>().unwrap(),));
+        assert!(!service.can_compress(StatusCode::PARTIAL_CONTENT, &mime::STAR_STAR));
+        assert!(!service.can_compress(StatusCode::PARTIAL_CONTENT, &mime::TEXT_PLAIN));
+        assert!(!service.can_compress(StatusCode::PARTIAL_CONTENT, &mime::IMAGE_JPEG));
+        assert!(!service.can_compress(StatusCode::OK, &"video/*".parse::<mime::Mime>().unwrap()));
+        assert!(!service.can_compress(StatusCode::OK, &"audio/*".parse::<mime::Mime>().unwrap()));
     }
 
     #[ignore]
     #[test]
     fn path_exists() {}
+
+    #[ignore]
+    #[test]
+    fn path_does_not_exists() {}
 
     #[test]
     fn path_is_hidden() {
@@ -496,11 +556,10 @@ mod tests {
     #[test]
     fn path_is_not_hidden() {
         // `--all` flag is on
-        let args = Args {
-            ..Default::default()
-        };
+        let args = Args::default();
         let (service, _) = bootstrap(args);
         assert!(!service.path_is_hidden(".a-hidden-file"));
+        assert!(!service.path_is_hidden("a-public-file"));
 
         // `--all` flag is off and the file is not prefixed with `.`
         let args = Args {
@@ -513,9 +572,7 @@ mod tests {
 
     #[test]
     fn path_is_ignored() {
-        let args = Args {
-            ..Default::default()
-        };
+        let args = Args::default();
         let (service, _) = bootstrap(args);
         assert!(!service.path_is_ignored("target"));
     }
@@ -538,37 +595,11 @@ mod tests {
         assert!(!service.path_is_ignored("README.md"));
     }
 
-    #[cfg(unix)]
     #[test]
     fn path_is_under_basepath() {
-        use std::os::unix::fs::symlink;
-
-        let src_dir = TempDir::new(temp_name()).unwrap();
-        let src_dir = src_dir.path().canonicalize().unwrap();
-        let src_path = src_dir.join("src_file.txt");
-        let _ = File::create(&src_path);
-
-        // Is under service's base path
-        let symlink_path = src_dir.join("symlink");
-        let args = Args {
-            path: src_dir,
-            ..Default::default()
-        };
-        let (service, _) = bootstrap(args);
-        symlink(&src_path, &symlink_path).unwrap();
-        assert!(service.path_is_under_basepath(&symlink_path));
-
-        // Not under base path.
-        let args = Args {
-            ..Default::default()
-        };
-        let (service, _) = bootstrap(args);
-        assert!(!service.path_is_under_basepath(&symlink_path));
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn path_is_under_basepath() {
+        #[cfg(unix)]
+        use std::os::unix::fs::symlink as symlink_file;
+        #[cfg(windows)]
         use std::os::windows::fs::symlink_file;
 
         let src_dir = TempDir::new(temp_name()).unwrap();
@@ -587,9 +618,7 @@ mod tests {
         assert!(service.path_is_under_basepath(&symlink_path));
 
         // Not under base path.
-        let args = Args {
-            ..Default::default()
-        };
+        let args = Args::default();
         let (service, _) = bootstrap(args);
         assert!(!service.path_is_under_basepath(&symlink_path));
     }
@@ -612,9 +641,7 @@ mod tests {
             None
         );
 
-        let args = Args {
-            ..Default::default()
-        };
+        let args = Args::default();
         let (service, _) = bootstrap(args);
 
         assert_eq!(

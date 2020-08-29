@@ -9,45 +9,51 @@
 //! Response factory functions.
 //!
 
-use hyper::header::ContentLength;
-use hyper::server::Response;
+use headers::{ContentLength, HeaderMapExt};
 use hyper::StatusCode;
 
+use crate::server::Response;
+
 /// Generate 304 NotModified response.
-pub fn not_modified(res: Response) -> Response {
-    res.with_status(StatusCode::NotModified)
+pub fn not_modified(mut res: Response) -> Response {
+    *res.status_mut() = StatusCode::NOT_MODIFIED;
+    res
 }
 
 /// Generate 403 Forbidden response.
 pub fn forbidden(res: Response) -> Response {
-    let body = "403 Forbidden";
-    res.with_status(StatusCode::Forbidden)
-        .with_header(ContentLength(body.len() as u64))
-        .with_body(body)
+    prepare_response(res, StatusCode::FORBIDDEN, "403 Forbidden")
 }
 
 /// Generate 404 NotFound response.
 pub fn not_found(res: Response) -> Response {
-    let body = "404 Not Found";
-    res.with_status(StatusCode::NotFound)
-        .with_header(ContentLength(body.len() as u64))
-        .with_body(body)
+    prepare_response(res, StatusCode::NOT_FOUND, "404 Not Found")
 }
 
 /// Generate 412 PreconditionFailed response.
 pub fn precondition_failed(res: Response) -> Response {
-    let body = "412 Precondition Failed";
-    res.with_status(StatusCode::PreconditionFailed)
-        .with_header(ContentLength(body.len() as u64))
-        .with_body(body)
+    prepare_response(
+        res,
+        StatusCode::PRECONDITION_FAILED,
+        "412 Precondition Failed",
+    )
 }
 
 /// Generate 500 InternalServerError response.
 pub fn internal_server_error(res: Response) -> Response {
-    let body = "500 Internal Server Error";
-    res.with_status(StatusCode::InternalServerError)
-        .with_header(ContentLength(body.len() as u64))
-        .with_body(body)
+    prepare_response(
+        res,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "500 Internal Server Error",
+    )
+}
+
+fn prepare_response(mut res: Response, code: StatusCode, body: &'static str) -> Response {
+    *res.status_mut() = code;
+    *res.body_mut() = body.into();
+    res.headers_mut()
+        .typed_insert(ContentLength(body.len() as u64));
+    res
 }
 
 #[cfg(test)]
@@ -56,36 +62,31 @@ mod t {
 
     #[test]
     fn response_304() {
-        let res = not_modified(Response::new());
-        assert_eq!(res.status(), StatusCode::NotModified);
-        assert!(res.body().is_empty());
+        let res = not_modified(Response::default());
+        assert_eq!(res.status(), StatusCode::NOT_MODIFIED);
     }
 
     #[test]
     fn response_403() {
-        let res = forbidden(Response::new());
-        assert_eq!(res.status(), StatusCode::Forbidden);
-        assert!(!res.body().is_empty());
+        let res = forbidden(Response::default());
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
     }
 
     #[test]
     fn response_404() {
-        let res = not_found(Response::new());
-        assert_eq!(res.status(), StatusCode::NotFound);
-        assert!(!res.body().is_empty());
+        let res = not_found(Response::default());
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
     }
 
     #[test]
     fn response_412() {
-        let res = precondition_failed(Response::new());
-        assert_eq!(res.status(), StatusCode::PreconditionFailed);
-        assert!(!res.body().is_empty());
+        let res = precondition_failed(Response::default());
+        assert_eq!(res.status(), StatusCode::PRECONDITION_FAILED);
     }
 
     #[test]
     fn response_500() {
-        let res = internal_server_error(Response::new());
-        assert_eq!(res.status(), StatusCode::InternalServerError);
-        assert!(!res.body().is_empty());
+        let res = internal_server_error(Response::default());
+        assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }
