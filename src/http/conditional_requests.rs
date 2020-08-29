@@ -8,66 +8,10 @@
 
 use std::time::SystemTime;
 
-use hyper::header::{ETag, IfMatch, IfModifiedSince, IfNoneMatch, IfUnmodifiedSince, LastModified};
-use hyper::server::Request;
+use headers::{ETag, HeaderMapExt, IfMatch, IfModifiedSince, IfNoneMatch, IfUnmodifiedSince};
 use hyper::Method;
 
-use crate::extensions::SystemTimeExt;
-
-/// Validate precondition of `If-Match` header.
-///
-/// Note that an origin server MUST use the strong comparison function when
-/// comparing entity-tags for `If-Match`.
-///
-/// [RFC7232: If-Match](https://tools.ietf.org/html/rfc7232#section-3.1)
-fn check_if_match(etag: &ETag, if_match: &IfMatch) -> bool {
-    match *if_match {
-        IfMatch::Any => true,
-        IfMatch::Items(ref tags) => tags.iter().any(|tag| tag.strong_eq(etag)),
-    }
-}
-
-/// Validate precondition of `If-None-Match` header.
-///
-/// Note that a recipient MUST use the weak comparison function when comparing
-/// entity-tags for `If-None-Match`.
-///
-/// [RFC7232: If-None-Match](https://tools.ietf.org/html/rfc7232#section-3.2)
-fn check_if_none_match(etag: &ETag, if_none_match: &IfNoneMatch) -> bool {
-    match *if_none_match {
-        IfNoneMatch::Any => false,
-        IfNoneMatch::Items(ref tags) => tags.iter().all(|tag| tag.weak_ne(etag)),
-    }
-}
-
-/// Validate precondition of `If-Unmodified-Since` header.
-fn check_if_unmodified_since(
-    last_modified: &LastModified,
-    if_unmodified_since: &IfUnmodifiedSince,
-) -> bool {
-    let IfUnmodifiedSince(since) = *if_unmodified_since;
-    let LastModified(modified) = *last_modified;
-    // Convert to seconds to omit subsecs precision.
-    let modified: SystemTime = modified.into();
-    let since: SystemTime = since.into();
-    modified.timestamp() <= since.timestamp()
-}
-
-/// Validate precondition of `If-Modified-Since` header.
-fn check_if_modified_since(
-    last_modified: &LastModified,
-    if_modified_since: &IfModifiedSince,
-) -> bool {
-    let IfModifiedSince(since) = *if_modified_since;
-    !check_if_unmodified_since(last_modified, &IfUnmodifiedSince(since))
-}
-
-fn is_method_get_head(method: &Method) -> bool {
-    match *method {
-        Method::Get | Method::Head => true,
-        _ => false,
-    }
-}
+use crate::server::Request;
 
 /// Indicates that conditions given in the request header evaluted to false.
 /// Return true if any preconditions fail.
@@ -78,262 +22,137 @@ fn is_method_get_head(method: &Method) -> bool {
 /// handle caching responses by themselves.
 ///
 /// [1]: https://tools.ietf.org/html/rfc7232#section-6
-pub fn is_precondition_failed(req: &Request, etag: &ETag, last_modified: &LastModified) -> bool {
+pub fn is_precondition_failed(req: &Request, etag: &ETag, last_modified: SystemTime) -> bool {
+    // 3. Evaluate If-None-Match
+    let eval_if_none_match = || {
+        req.headers().typed_get::<IfNoneMatch>().is_some()
+            && req.method() != Method::GET
+            && req.method() != Method::HEAD
+    };
+
     // 1. Evaluate If-Match
-    if let Some(if_match) = req.headers().get::<IfMatch>() {
-        if check_if_match(etag, if_match) {
-            // 3. Evaluate If-None-Match
-            if let Some(_) = req.headers().get::<IfNoneMatch>() {
-                if !is_method_get_head(req.method()) {
-                    return true;
-                }
-            }
-        } else {
-            return true;
-        }
-    }
+    let eval_if_match = req
+        .headers()
+        .typed_get::<IfMatch>()
+        .map(|if_match| !if_match.precondition_passes(etag) || eval_if_none_match());
 
     // 2. Evaluate If-Unmodified-Since
-    if let Some(if_unmodified_since) = req.headers().get::<IfUnmodifiedSince>() {
-        if check_if_unmodified_since(last_modified, if_unmodified_since) {
-            // 3. Evaluate If-None-Match
-            if let Some(_) = req.headers().get::<IfNoneMatch>() {
-                if !is_method_get_head(req.method()) {
-                    return true;
-                }
-            }
-        } else {
-            return true;
-        }
-    }
+    let eval_if_unmodified_since = || {
+        req.headers()
+            .typed_get::<IfUnmodifiedSince>()
+            .map(|if_unmodified_since| {
+                !if_unmodified_since.precondition_passes(last_modified) || eval_if_none_match()
+            })
+    };
 
-    // 3. Evaluate If-None-Match
-    if let Some(_) = req.headers().get::<IfNoneMatch>() {
-        if !is_method_get_head(req.method()) {
-            return true;
-        }
-    }
-
-    false
+    eval_if_match
+        .or_else(eval_if_unmodified_since)
+        .or_else(|| Some(eval_if_none_match()))
+        .unwrap_or_default()
 }
 
 /// Determine freshness of requested resource by validate `If-None-Match`
-/// and `If-Modified-Since` precondition header fields containing validators.
+/// and `If-Modified-Sinlsece` precondition header fields containing validators.
 ///
 /// See more on [RFC7234, 4.3.2. Handling a Received Validation Request][1].
 ///
 /// [1]: https://tools.ietf.org/html/rfc7234#section-4.3.2
-pub fn is_fresh(req: &Request, etag: &ETag, last_modified: &LastModified) -> bool {
+pub fn is_fresh(req: &Request, etag: &ETag, last_modified: SystemTime) -> bool {
     // `If-None-Match` takes presedence over `If-Modified-Since`.
-    if let Some(if_none_match) = req.headers().get::<IfNoneMatch>() {
-        !check_if_none_match(etag, &if_none_match)
-    } else if let Some(since) = req.headers().get::<IfModifiedSince>() {
-        !check_if_modified_since(last_modified, &since)
+    if let Some(if_none_match) = req.headers().typed_get::<IfNoneMatch>() {
+        !if_none_match.precondition_passes(etag)
+    } else if let Some(if_modified_since) = req.headers().typed_get::<IfModifiedSince>() {
+        !if_modified_since.is_modified(last_modified)
     } else {
         false
     }
 }
 
 #[cfg(test)]
-mod t {
+fn init_request() -> (Request, ETag, SystemTime) {
+    (
+        Request::default(),
+        "\"hello\"".to_string().parse::<ETag>().unwrap(),
+        SystemTime::now(),
+    )
+}
+
+#[cfg(test)]
+mod t_precondition {
     use super::*;
-    use hyper::header::EntityTag;
     use std::time::Duration;
 
-    mod match_none_match {
-        use super::*;
-
-        #[test]
-        fn any() {
-            let etag = ETag(EntityTag::strong("".to_owned()));
-            assert!(check_if_match(&etag, &IfMatch::Any));
-            assert!(!check_if_none_match(&etag, &IfNoneMatch::Any));
-        }
-
-        #[test]
-        fn one() {
-            let etag = ETag(EntityTag::strong("2".to_owned()));
-            let tags = vec![
-                EntityTag::strong("0".to_owned()),
-                EntityTag::strong("1".to_owned()),
-                EntityTag::strong("2".to_owned()),
-            ];
-            let if_match = IfMatch::Items(tags.to_owned());
-            assert!(check_if_match(&etag, &if_match));
-            let if_none_match = IfNoneMatch::Items(tags.to_owned());
-            assert!(!check_if_none_match(&etag, &if_none_match));
-        }
-
-        #[test]
-        fn none() {
-            let etag = ETag(EntityTag::strong("1".to_owned()));
-            let tags = vec![EntityTag::strong("0".to_owned())];
-            let if_match = IfMatch::Items(tags.to_owned());
-            assert!(!check_if_match(&etag, &if_match));
-            let if_none_match = IfNoneMatch::Items(tags.to_owned());
-            assert!(check_if_none_match(&etag, &if_none_match));
-        }
+    #[test]
+    fn ok_without_any_precondition() {
+        let (req, etag, date) = init_request();
+        assert!(!is_precondition_failed(&req, &etag, date));
     }
 
-    mod modified_unmodified_since {
-        use super::*;
-
-        fn init_since() -> (SystemTime, LastModified) {
-            let now = SystemTime::now();
-            (now, LastModified(now.into()))
-        }
-
-        #[test]
-        fn now() {
-            let (now, last_modified) = init_since();
-            assert!(!check_if_modified_since(
-                &last_modified,
-                &IfModifiedSince(now.into()),
-            ));
-            assert!(check_if_unmodified_since(
-                &last_modified,
-                &IfUnmodifiedSince(now.into()),
-            ));
-        }
-
-        #[test]
-        fn after_one_sec() {
-            let (now, last_modified) = init_since();
-            let modified = now + Duration::from_secs(1);
-            assert!(!check_if_modified_since(
-                &last_modified,
-                &IfModifiedSince(modified.into()),
-            ));
-            assert!(check_if_unmodified_since(
-                &last_modified,
-                &IfUnmodifiedSince(modified.into()),
-            ));
-        }
-
-        #[test]
-        fn one_sec_ago() {
-            let (now, last_modified) = init_since();
-            let modified = now - Duration::from_secs(1);
-            assert!(check_if_modified_since(
-                &last_modified,
-                &IfModifiedSince(modified.into()),
-            ));
-            assert!(!check_if_unmodified_since(
-                &last_modified,
-                &IfUnmodifiedSince(modified.into()),
-            ));
-        }
+    #[test]
+    fn failed_with_if_match_not_passes() {
+        let (mut req, etag, date) = init_request();
+        let if_match = IfMatch::from("\"\"".to_string().parse::<ETag>().unwrap());
+        req.headers_mut().typed_insert(if_match);
+        assert!(is_precondition_failed(&req, &etag, date));
     }
 
-    fn init_request() -> (Request, EntityTag, SystemTime) {
-        (
-            Request::new(Method::Get, "localhost".parse().unwrap()),
-            EntityTag::strong("hello".to_owned()),
-            SystemTime::now(),
-        )
+    #[test]
+    fn with_if_match_passes() {
+        let (mut req, etag, date) = init_request();
+        let if_match = IfMatch::from("\"hello\"".to_string().parse::<ETag>().unwrap());
+        let if_none_match = IfNoneMatch::from("\"world\"".to_string().parse::<ETag>().unwrap());
+        req.headers_mut().typed_insert(if_match);
+        req.headers_mut().typed_insert(if_none_match);
+        // OK with GET HEAD methods
+        assert!(!is_precondition_failed(&req, &etag, date));
+        // Failed with method other than GET HEAD
+        *req.method_mut() = Method::PUT;
+        assert!(is_precondition_failed(&req, &etag, date));
     }
 
-    mod fresh {
-        use super::*;
-
-        #[test]
-        fn no_precondition_header_fields() {
-            let (req, etag, date) = init_request();
-            assert!(!is_fresh(&req, &ETag(etag), &LastModified(date.into())));
-        }
-
-        #[test]
-        fn if_none_match_precedes_if_modified_since() {
-            let (mut req, etag, date) = init_request();
-            let if_none_match = IfNoneMatch::Items(vec![etag.to_owned()]);
-            let future = date + Duration::from_secs(1);
-            let if_modified_since = IfModifiedSince(future.into());
-            req.headers_mut().set(if_none_match);
-            req.headers_mut().set(if_modified_since);
-            assert!(is_fresh(&req, &ETag(etag), &LastModified(date.into())));
-        }
+    #[test]
+    fn failed_with_if_unmodified_since_not_passes() {
+        let (mut req, etag, date) = init_request();
+        let past = date - Duration::from_secs(1);
+        let if_unmodified_since = IfUnmodifiedSince::from(past);
+        req.headers_mut().typed_insert(if_unmodified_since);
+        assert!(is_precondition_failed(&req, &etag, date));
     }
 
-    mod precondition {
-        use super::*;
+    #[test]
+    fn with_if_unmodified_since_passes() {
+        let (mut req, etag, date) = init_request();
+        let if_unmodified_since = IfUnmodifiedSince::from(date);
+        let if_none_match = IfNoneMatch::from("\"nonematch\"".to_string().parse::<ETag>().unwrap());
+        req.headers_mut().typed_insert(if_unmodified_since);
+        req.headers_mut().typed_insert(if_none_match);
+        // OK with GET HEAD methods
+        assert!(!is_precondition_failed(&req, &etag, date));
+        // Failed with method other than GET HEAD
+        *req.method_mut() = Method::PUT;
+        assert!(is_precondition_failed(&req, &etag, date));
+    }
+}
 
-        #[test]
-        fn ok_without_any_precondition() {
-            let (req, etag, date) = init_request();
-            assert!(!is_precondition_failed(
-                &req,
-                &ETag(etag),
-                &LastModified(date.into())
-            ));
-        }
+#[cfg(test)]
+mod t_fresh {
+    use super::*;
+    use std::time::Duration;
 
-        #[test]
-        fn failed_with_if_match_not_passes() {
-            let (mut req, etag, date) = init_request();
-            let if_match = IfMatch::Items(vec![EntityTag::strong("".to_owned())]);
-            req.headers_mut().set(if_match);
-            assert!(is_precondition_failed(
-                &req,
-                &ETag(etag),
-                &LastModified(date.into())
-            ));
-        }
+    #[test]
+    fn no_precondition_header_fields() {
+        let (req, etag, date) = init_request();
+        assert!(!is_fresh(&req, &etag, date));
+    }
 
-        #[test]
-        fn with_if_match_passes() {
-            let (mut req, etag, date) = init_request();
-            let if_match = IfMatch::Items(vec![EntityTag::strong("hello".to_owned())]);
-            let if_none_match = IfNoneMatch::Items(vec![EntityTag::strong("world".to_owned())]);
-            req.headers_mut().set(if_match);
-            req.headers_mut().set(if_none_match);
-            // OK with GET HEAD methods
-            assert!(!is_precondition_failed(
-                &req,
-                &ETag(etag.to_owned()),
-                &LastModified(date.into())
-            ));
-            // Failed with method other than GET HEAD
-            req.set_method(Method::Post);
-            assert!(is_precondition_failed(
-                &req,
-                &ETag(etag.to_owned()),
-                &LastModified(date.into())
-            ));
-        }
-
-        #[test]
-        fn failed_with_if_unmodified_since_not_passes() {
-            let (mut req, etag, date) = init_request();
-            let past = date - Duration::from_secs(1);
-            let if_unmodified_since = IfUnmodifiedSince(past.into());
-            req.headers_mut().set(if_unmodified_since);
-            assert!(is_precondition_failed(
-                &req,
-                &ETag(etag),
-                &LastModified(date.into())
-            ));
-        }
-
-        #[test]
-        fn with_if_unmodified_since_passes() {
-            let (mut req, etag, date) = init_request();
-            let if_unmodified_since = IfUnmodifiedSince(date.into());
-            let if_none_match = IfNoneMatch::Items(vec![EntityTag::strong("nonematch".to_owned())]);
-            req.headers_mut().set(if_unmodified_since);
-            req.headers_mut().set(if_none_match);
-            // OK with GET HEAD methods
-            assert!(!is_precondition_failed(
-                &req,
-                &ETag(etag.to_owned()),
-                &LastModified(date.into())
-            ));
-            // Failed with method other than GET HEAD
-            req.set_method(Method::Post);
-            assert!(is_precondition_failed(
-                &req,
-                &ETag(etag.to_owned()),
-                &LastModified(date.into())
-            ));
-        }
+    #[test]
+    fn if_none_match_precedes_if_modified_since() {
+        let (mut req, etag, date) = init_request();
+        let if_none_match = IfNoneMatch::from(etag.clone());
+        let future = date + Duration::from_secs(1);
+        let if_modified_since = IfModifiedSince::from(future);
+        req.headers_mut().typed_insert(if_none_match);
+        req.headers_mut().typed_insert(if_modified_since);
+        assert!(is_fresh(&req, &etag, date));
     }
 }
