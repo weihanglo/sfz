@@ -9,15 +9,14 @@
 use std::cmp::Ordering;
 use std::io::{self, BufReader};
 
-use brotli;
 use flate2::read::{DeflateEncoder, GzEncoder};
 use flate2::Compression;
 use hyper::header::HeaderValue;
 
-const IDENTITY: &'static str = "identity";
-const DEFLATE: &'static str = "deflate";
-const GZIP: &'static str = "gzip";
-const BR: &'static str = "br";
+const IDENTITY: &str = "identity";
+const DEFLATE: &str = "deflate";
+const GZIP: &str = "gzip";
+const BR: &str = "br";
 
 /// Inner helper type to store quality values.
 ///

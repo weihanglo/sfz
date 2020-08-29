@@ -86,7 +86,7 @@ impl InnerService {
     pub async fn call(self: Arc<Self>, req: Request) -> Result<Response, hyper::Error> {
         let res = self
             .handle_request(&req)
-            .unwrap_or(res::internal_server_error(Response::default()));
+            .unwrap_or_else(|_| res::internal_server_error(Response::default()));
         // Logging
         // TODO: use proper logging crate
         if self.args.log {
