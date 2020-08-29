@@ -88,6 +88,7 @@ impl InnerService {
             .handle_request(&req)
             .unwrap_or(res::internal_server_error(Response::default()));
         // Logging
+        // TODO: use proper logging crate
         if self.args.log {
             println!(
                 r#"[{}] "{} {}" - {}"#,
@@ -212,10 +213,10 @@ impl InnerService {
         }
     }
 
-    /// strip the path prefix of the request path
+    /// Strip the path prefix of the request path.
     ///
-    /// if there is a path prefix defined and strip_prefix returns None return None
-    /// else return the path with the prefix stripped
+    /// If there is a path prefix defined and `strip_prefix` returns `None`,
+    /// return None. Otherwise return the path with the prefix stripped.
     fn strip_path_prefix<'a, T: AsRef<Path>>(&self, path: &'a T) -> Option<&'a Path> {
         match self.args.path_prefix.as_deref() {
             Some(mut path_prefix) => {
@@ -431,20 +432,17 @@ mod t_server {
 
     #[test]
     fn guess_path_mime() {
-        use std::env;
         let mime_type = InnerService::guess_path_mime("file-wthout-extension");
         assert_eq!(mime_type, mime::TEXT_PLAIN_UTF_8);
 
-        // TODO: env::home_dir() deprcate
-        let mime_type = InnerService::guess_path_mime(env::home_dir().unwrap());
+        let dir_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let mime_type = InnerService::guess_path_mime(dir_path);
         assert_eq!(mime_type, mime::TEXT_HTML_UTF_8);
     }
 
     #[test]
     fn enable_cors() {
-        let args = Args {
-            ..Default::default()
-        };
+        let args = Args::default();
         let (service, mut res) = bootstrap(args);
         service.enable_cors(&mut res);
         assert_eq!(
@@ -452,6 +450,19 @@ mod t_server {
                 .typed_get::<AccessControlAllowOrigin>()
                 .unwrap(),
             AccessControlAllowOrigin::ANY,
+        );
+        assert_eq!(
+            res.headers()
+                .typed_get::<AccessControlAllowHeaders>()
+                .unwrap(),
+            vec![
+                hyper::header::RANGE,
+                hyper::header::CONTENT_TYPE,
+                hyper::header::ACCEPT,
+                hyper::header::ORIGIN,
+            ]
+            .into_iter()
+            .collect::<AccessControlAllowHeaders>(),
         );
     }
 
@@ -463,27 +474,42 @@ mod t_server {
         };
         let (service, mut res) = bootstrap(args);
         service.enable_cors(&mut res);
-        assert!(!res
+        assert!(res
             .headers()
             .typed_get::<AccessControlAllowOrigin>()
-            .is_some());
+            .is_none());
     }
 
     #[test]
     fn enable_cache_control() {
+        let args = Args::default();
+        let (service, mut res) = bootstrap(args);
+        service.enable_cache_control(&mut res);
+        assert_eq!(
+            res.headers().typed_get::<CacheControl>().unwrap(),
+            CacheControl::new()
+                .with_public()
+                .with_max_age(Duration::default()),
+        );
+
+        let cache = 3600;
         let args = Args {
+            cache,
             ..Default::default()
         };
         let (service, mut res) = bootstrap(args);
         service.enable_cache_control(&mut res);
-        assert!(res.headers().typed_get::<CacheControl>().is_some());
+        assert_eq!(
+            res.headers().typed_get::<CacheControl>().unwrap(),
+            CacheControl::new()
+                .with_public()
+                .with_max_age(Duration::from_secs(3600)),
+        );
     }
 
     #[test]
     fn can_compress() {
-        let args = Args {
-            ..Default::default()
-        };
+        let args = Args::default();
         let (service, _) = bootstrap(args);
         assert!(service.can_compress(StatusCode::OK, &mime::TEXT_PLAIN));
     }
@@ -495,18 +521,26 @@ mod t_server {
             ..Default::default()
         };
         let (service, _) = bootstrap(args);
+        assert!(!service.can_compress(StatusCode::OK, &mime::STAR_STAR));
         assert!(!service.can_compress(StatusCode::OK, &mime::TEXT_PLAIN));
+        assert!(!service.can_compress(StatusCode::OK, &mime::IMAGE_JPEG));
 
         let args = Args::default();
         let (service, _) = bootstrap(args);
-        assert!(!service.can_compress(StatusCode::PARTIAL_CONTENT, &mime::STAR_STAR,));
-        assert!(!service.can_compress(StatusCode::OK, &"video/*".parse::<mime::Mime>().unwrap(),));
-        assert!(!service.can_compress(StatusCode::OK, &"audio/*".parse::<mime::Mime>().unwrap(),));
+        assert!(!service.can_compress(StatusCode::PARTIAL_CONTENT, &mime::STAR_STAR));
+        assert!(!service.can_compress(StatusCode::PARTIAL_CONTENT, &mime::TEXT_PLAIN));
+        assert!(!service.can_compress(StatusCode::PARTIAL_CONTENT, &mime::IMAGE_JPEG));
+        assert!(!service.can_compress(StatusCode::OK, &"video/*".parse::<mime::Mime>().unwrap()));
+        assert!(!service.can_compress(StatusCode::OK, &"audio/*".parse::<mime::Mime>().unwrap()));
     }
 
     #[ignore]
     #[test]
     fn path_exists() {}
+
+    #[ignore]
+    #[test]
+    fn path_does_not_exists() {}
 
     #[test]
     fn path_is_hidden() {
@@ -522,11 +556,10 @@ mod t_server {
     #[test]
     fn path_is_not_hidden() {
         // `--all` flag is on
-        let args = Args {
-            ..Default::default()
-        };
+        let args = Args::default();
         let (service, _) = bootstrap(args);
         assert!(!service.path_is_hidden(".a-hidden-file"));
+        assert!(!service.path_is_hidden("a-public-file"));
 
         // `--all` flag is off and the file is not prefixed with `.`
         let args = Args {
@@ -539,9 +572,7 @@ mod t_server {
 
     #[test]
     fn path_is_ignored() {
-        let args = Args {
-            ..Default::default()
-        };
+        let args = Args::default();
         let (service, _) = bootstrap(args);
         assert!(!service.path_is_ignored("target"));
     }
@@ -564,36 +595,12 @@ mod t_server {
         assert!(!service.path_is_ignored("README.md"));
     }
 
-    #[cfg(unix)]
     #[test]
     fn path_is_under_basepath() {
-        use std::os::unix::fs::symlink;
-
-        let src_dir = TempDir::new(temp_name()).unwrap();
-        let src_dir = src_dir.path().canonicalize().unwrap();
-        let src_path = src_dir.join("src_file.txt");
-        let _ = File::create(&src_path);
-
-        // Is under service's base path
-        let symlink_path = src_dir.join("symlink");
-        let args = Args {
-            path: src_dir,
-            ..Default::default()
-        };
-        let (service, _) = bootstrap(args);
-        symlink(&src_path, &symlink_path).unwrap();
-        assert!(service.path_is_under_basepath(&symlink_path));
-
-        // Not under base path.
-        let args = Args::default();
-        let (service, _) = bootstrap(args);
-        assert!(!service.path_is_under_basepath(&symlink_path));
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn path_is_under_basepath() {
+        #[cfg(windows)]
         use std::os::windows::fs::symlink_file;
+        #[cfg(unix)]
+        use std::os::unix::fs::symlink as symlink_file;
 
         let src_dir = TempDir::new(temp_name()).unwrap();
         let src_dir = src_dir.path().canonicalize().unwrap();
