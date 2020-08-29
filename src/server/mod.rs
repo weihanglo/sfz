@@ -448,7 +448,9 @@ mod t_server {
         let (service, mut res) = bootstrap(args);
         service.enable_cors(&mut res);
         assert_eq!(
-            res.headers().typed_get::<AccessControlAllowOrigin>().unwrap(),
+            res.headers()
+                .typed_get::<AccessControlAllowOrigin>()
+                .unwrap(),
             AccessControlAllowOrigin::ANY,
         );
     }
@@ -461,7 +463,10 @@ mod t_server {
         };
         let (service, mut res) = bootstrap(args);
         service.enable_cors(&mut res);
-        assert!(!res.headers().typed_get::<AccessControlAllowOrigin>().is_some());
+        assert!(!res
+            .headers()
+            .typed_get::<AccessControlAllowOrigin>()
+            .is_some());
     }
 
     #[test]
