@@ -40,11 +40,10 @@ jobs:
       run: |
         unset REF_TAG ; case ${GITHUB_REF} in refs/tags/*) REF_TAG=${GITHUB_REF#refs/tags/} ;; esac;
         EXE_SUFFIX=
-        PKG_SUFFIX=".tar.gz" ; 
-        case ${{ matrix.os }} in windows-*) EXE_SUFFIX=".exe" PKG_suffix=".zip" ;; esac;
-        unset PKG_NAME ; PKG_NAME="${{ env.CRATE_NAME }}-${{ steps.vars.outputs.REF_TAG }}-${{ matrix.target }}${PKG_SUFFIX}"
+        PKG_SUFFIX=".tar.gz" ;
+        case ${{ matrix.os }} in windows-*) EXE_SUFFIX=".exe" PKG_SUFFIX=".zip" ;; esac;
+        unset PKG_NAME ; PKG_NAME="${{ env.CRATE_NAME }}-${REF_TAG}-${{ matrix.target }}${PKG_SUFFIX}"
 
-        echo ::set-output name=REF_TAG::${REF_TAG}
         echo ::set-output name=ARCHIVE_DIR::__archive__
         echo ::set-output name=EXE_SUFFIX::${EXE_SUFFIX}
         echo ::set-output name=PKG_NAME::${PKG_NAME}
