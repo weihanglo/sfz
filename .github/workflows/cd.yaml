@@ -14,7 +14,7 @@ jobs:
         include:
         - os: ubuntu-latest
           target: x86_64-unknown-linux-gnu
-          run-test: true
+          cratesio: true
         - os: ubuntu-latest
           target: x86_64-unknown-linux-musl
         - os: macos-latest
@@ -84,6 +84,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: Publish to crates.io
+      if: ${{ matrix.cratesio }}
       uses: actions-rs/cargo@v1
       with:
         command: publish
