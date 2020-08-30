@@ -17,9 +17,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - run: rustup set profile minimal && rustup update stable && rustup default stable
-    - run: rustup component add rustfmt
-    - run: cargo fmt -- --check
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        components: rustfmt
+        override: true
+        profile: minimal
+    - uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: -- --check
 
   test:
     runs-on: ${{ matrix.os }}
@@ -61,8 +68,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - run: rustup set profile minimal && rustup update stable && rustup default stable
-    - run: cargo test --no-fail-fast
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+    - uses: actions-rs/cargo@v1
+      with:
+        command: clean
+    - uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --no-fail-fast
       env:
         CARGO_INCREMENTAL: '0'
         RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Zno-landing-pads'
