@@ -1,0 +1,91 @@
+name: CD
+on:
+  push:
+    tags:
+      - '[vV][0-9]+.[0-9]+.[0-9]+*'
+env:
+  CRATE_NAME: sfz
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - os: ubuntu-latest
+          target: x86_64-unknown-linux-gnu
+          run-test: true
+        - os: ubuntu-latest
+          target: x86_64-unknown-linux-musl
+        - os: macos-latest
+          target: x86_64-apple-darwin
+        - os: windows-latest
+          target: x86_64-pc-windows-msvc
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: ${{ matrix.target }}
+        override: true
+        profile: minimal
+    - name: Preflight check
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --release --target=${{ matrix.target }}
+    - name: Initialize workflow variables
+      id: vars
+      shell: bash
+      run: |
+        unset REF_TAG ; case ${GITHUB_REF} in refs/tags/*) REF_TAG=${GITHUB_REF#refs/tags/} ;; esac;
+        EXE_SUFFIX=
+        PKG_SUFFIX=".tar.gz" ; 
+        case ${{ matrix.os }} in windows-*) EXE_SUFFIX=".exe" PKG_suffix=".zip" ;; esac;
+        unset PKG_NAME ; PKG_NAME="${{ env.CRATE_NAME }}-${{ steps.vars.outputs.REF_TAG }}-${{ matrix.target }}${PKG_SUFFIX}"
+
+        echo ::set-output name=REF_TAG::${REF_TAG}
+        echo ::set-output name=ARCHIVE_DIR::__archive__
+        echo ::set-output name=EXE_SUFFIX::${EXE_SUFFIX}
+        echo ::set-output name=PKG_NAME::${PKG_NAME}
+    - name: Build
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --release --target=${{ matrix.target }}
+    - name: Package
+      shell: bash
+      run: |
+        # Copy build artifacts
+        mkdir -p "${{ steps.vars.outputs.ARCHIVE_DIR }}"
+        cp "target/${{ matrix.target }}/release/${{ env.CRATE_NAME }}${{ steps.vars.outputs.EXE_SUFFIX }}" "${{ steps.vars.outputs.ARCHIVE_DIR }}/"
+
+        # Strip binary
+        case ${{ matrix.os }} in
+          windows-*) ;;
+          *) strip "${{ steps.vars.outputs.ARCHIVE_DIR }}/${{ env.CRATE_NAME }}" ;;
+        esac;
+
+        # Package binary
+        pushd "${{ steps.vars.outputs.ARCHIVE_DIR }}/" > /dev/null
+        case ${{ matrix.os }} in
+          windows-*) 7z -y a '${{ steps.vars.outputs.PKG_NAME }}' * | tail -2 ;;
+          *) tar czf '${{ steps.vars.outputs.PKG_NAME }}' * ;;
+        esac;
+        popd > /dev/null
+
+        # Clean up working directory
+        git clean -df
+    - name: Publish to GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          ${{ steps.vars.outputs.ARCHIVE_DIR }}/${{ steps.vars.outputs.PKG_NAME }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Publish to crates.io
+      uses: actions-rs/cargo@v1
+      with:
+        command: publish
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
