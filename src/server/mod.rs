@@ -185,9 +185,9 @@ impl InnerService {
     /// A path is considered as hidden if matches all rules below:
     ///
     /// 1. `all` arg is false
-    /// 2. is hidden (prefixed with dot `.`)
+    /// 2. any component of the path is hidden (prefixed with dot `.`)
     fn path_is_hidden<P: AsRef<Path>>(&self, path: P) -> bool {
-        !self.args.all && path.as_ref().is_hidden()
+        !self.args.all && path.as_ref().is_relatively_hidden()
     }
 
     /// Determine if given path is ignored.

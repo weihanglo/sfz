@@ -6,7 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::path::Path;
+use std::path::{Component, Path};
 use std::time::SystemTime;
 
 use mime_guess::{mime, Mime};
@@ -26,7 +26,7 @@ pub enum PathType {
 
 pub trait PathExt {
     fn mime(&self) -> Option<Mime>;
-    fn is_hidden(&self) -> bool;
+    fn is_relatively_hidden(&self) -> bool;
     fn mtime(&self) -> SystemTime;
     fn filename_str(&self) -> &str;
     fn size(&self) -> u64;
@@ -39,12 +39,18 @@ impl PathExt for Path {
         mime_guess::from_path(&self).first()
     }
 
-    /// Check if path is hidden.
-    fn is_hidden(&self) -> bool {
-        self.file_name()
-            .and_then(std::ffi::OsStr::to_str)
-            .map(|s| s.starts_with('.'))
-            .unwrap_or(false)
+    /// Check if a path is relatively hidden.
+    ///
+    /// A path is "relatively hidden" means that if any component of the path
+    /// is hidden, no matter whether the path's basename is prefixed with `.`
+    /// or not, it is considered as hidden.
+    fn is_relatively_hidden(&self) -> bool {
+        self.components()
+            .filter_map(|c| match c {
+                Component::Normal(os_str) => os_str.to_str(),
+                _ => None,
+            })
+            .any(|s| s.starts_with('.'))
     }
 
     /// Get modified time from a path.
@@ -118,6 +124,7 @@ impl MimeExt for Mime {
 #[cfg(test)]
 mod t_extensions {
     use super::*;
+    use std::path::PathBuf;
 
     fn file_txt_path() -> std::path::PathBuf {
         let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -138,9 +145,19 @@ mod t_extensions {
     }
 
     #[test]
-    fn path_is_hidden() {
-        assert_eq!(file_txt_path().is_hidden(), false);
-        assert_eq!(hidden_html_path().is_hidden(), true);
+    fn path_is_relatively_hidden() {
+        assert!(hidden_html_path().is_relatively_hidden());
+
+        let path = "./.hidden/visible.html";
+        assert!(PathBuf::from(path).is_relatively_hidden());
+    }
+
+    #[test]
+    fn path_is_not_relatively_hidden() {
+        assert!(!file_txt_path().is_relatively_hidden());
+
+        let path = "./visible/visible.html";
+        assert!(!PathBuf::from(path).is_relatively_hidden());
     }
 
     #[ignore]
