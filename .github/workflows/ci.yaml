@@ -81,7 +81,8 @@ jobs:
         args: --no-fail-fast
       env:
         CARGO_INCREMENTAL: '0'
-        RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Zno-landing-pads'
+        RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort'
+        RUSTDOCFLAGS: '-Cpanic=abort' # Though we are not using rustdoc...
     - uses: actions-rs/grcov@v0.1
       id: coverage
     - uses: codecov/codecov-action@v1
