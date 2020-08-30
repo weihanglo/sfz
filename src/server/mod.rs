@@ -396,6 +396,8 @@ mod t_server {
     }
 
     fn bootstrap(args: Args) -> (InnerService, Response) {
+        std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"))
+            .expect("fail to set project root as current working directory");
         (InnerService::new(args), Response::default())
     }
 
