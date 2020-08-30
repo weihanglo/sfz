@@ -126,14 +126,14 @@ mod t_extensions {
     use super::*;
     use std::path::PathBuf;
 
-    fn file_txt_path() -> std::path::PathBuf {
-        let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    fn file_txt_path() -> PathBuf {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         path.push("./tests/file.txt");
         path
     }
 
-    fn hidden_html_path() -> std::path::PathBuf {
-        let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    fn hidden_html_path() -> PathBuf {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         path.push("./tests/.hidden.html");
         path
     }
@@ -178,7 +178,7 @@ mod t_extensions {
 
     #[test]
     fn path_type_() {
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let mut dir_path = path.clone();
         dir_path.push("./tests/dir");
