@@ -4,8 +4,8 @@ on:
   push:
     branches:
       - master
-    tag: 
-      - '[vV][0-9]+.[0-9]+.[0-9]+'
+    tags:
+      - '[vV][0-9]+.[0-9]+.[0-9]+*'
   pull_request:
 
 env:
@@ -15,6 +15,7 @@ env:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    if: ${{ ! startsWith(github.ref, 'refs/tags/') }}
     steps:
     - uses: actions/checkout@v2
     - uses: actions-rs/toolchain@v1
@@ -30,6 +31,7 @@ jobs:
 
   test:
     runs-on: ${{ matrix.os }}
+    if: ${{ ! startsWith(github.ref, 'refs/tags/') }}
     strategy:
       fail-fast: false
       matrix:
@@ -111,7 +113,7 @@ jobs:
       shell: bash
       run: |
         unset REF_TAG ; case ${GITHUB_REF} in refs/tags/*) REF_TAG=${GITHUB_REF#refs/tags/} ;; esac;
-        unset DEPLOY ; if [[ $REF_TAG =~ ^[vV][0-9]+\.[0-9]+\.[0-9]+ ]]; then RELEASE='true' ; fi
+        unset RELEASE ; if [[ $REF_TAG =~ ^[vV][0-9]+\.[0-9]+\.[0-9]+ ]]; then RELEASE='true' ; fi
         EXE_SUFFIX=
         PKG_SUFFIX=".tar.gz" ; 
         case ${{ matrix.os }} in windows-*) EXE_SUFFIX=".exe" PKG_suffix=".zip" ;; esac;
@@ -123,7 +125,7 @@ jobs:
         echo ::set-output name=EXE_SUFFIX::${EXE_SUFFIX}
         echo ::set-output name=PKG_NAME::${PKG_NAME}
     - name: Exit if not a semantic tag
-      if: ${{ !steps.vars.outputs.RELEASE }}
+      if: ${{ ! steps.vars.outputs.RELEASE }}
       run: exit 1
     - uses: actions/checkout@v2
     - uses: actions-rs/toolchain@v1
@@ -140,14 +142,14 @@ jobs:
     - name: Package
       shell: bash
       run: |
-        cp "target/${{ matrix.target }}/release/${{ env.CRATE_NAME }}${{ steps.vars.outputs.EXE_SUFFIX }}" "${{ steps.vars.outpus.ARCHIVE_DIR }}/"
+        cp "target/${{ matrix.target }}/release/${{ env.CRATE_NAME }}${{ steps.vars.outputs.EXE_SUFFIX }}" "${{ steps.vars.outputs.ARCHIVE_DIR }}/"
 
-        case ${{ matrix.os }} in 
+        case ${{ matrix.os }} in
           windows-*) ;;
-          *) strip "${{ steps.vars.outpus.ARCHIVE_DIR }}/${{ env.CRATE_NAME }}" ;;
+          *) strip "${{ steps.vars.outputs.ARCHIVE_DIR }}/${{ env.CRATE_NAME }}" ;;
         esac;
 
-        pushd "${{ steps.vars.outpus.ARCHIVE_DIR }}/" > /dev/null
+        pushd "${{ steps.vars.outputs.ARCHIVE_DIR }}/" > /dev/null
         case ${{ matrix.os }} in
           windows-*) 7z -y a '${{ steps.vars.outputs.PKG_NAME }}' * | tail -2 ;;
           *) tar czf '${{ steps.vars.outputs.PKG_NAME }}' * ;;
@@ -163,7 +165,6 @@ jobs:
     - name: Publish to crates.io
       uses: actions-rs/cargo@v1
       with:
-        command: package
-        args: --release
+        command: publish
       env:
         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
