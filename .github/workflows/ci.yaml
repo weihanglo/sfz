@@ -160,3 +160,10 @@ jobs:
           ${{ steps.vars.outputs.ARCHIVE_DIR }}/${{ steps.vars.outputs.PKG_NAME }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Publish to crates.io
+      uses: actions-rs/cargo@v1
+      with:
+        command: package
+        args: --release
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
