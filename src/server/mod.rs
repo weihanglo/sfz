@@ -536,13 +536,38 @@ mod t_server {
         assert!(!service.can_compress(StatusCode::OK, &"audio/*".parse::<mime::Mime>().unwrap()));
     }
 
-    #[ignore]
     #[test]
-    fn path_exists() {}
+    fn path_exists() {
+        let args = Args::default();
+        let (service, _) = bootstrap(args);
+        // Exists but not hidden nor ignored
+        assert!(service.path_exists("README.md"));
+    }
 
-    #[ignore]
     #[test]
-    fn path_does_not_exists() {}
+    fn path_does_not_exists() {
+        let args = Args {
+            all: false,
+            ..Default::default()
+        };
+        let (service, _) = bootstrap(args);
+        // Not exists
+        let path = "NOT_EXISTS_README.md";
+        assert!(!PathBuf::from(path).exists());
+        assert!(!service.path_exists(path));
+
+        // Exists but hidden
+        let path = ".github/workflows/ci.yaml";
+        assert!(PathBuf::from(path).exists());
+        assert!(service.path_is_hidden(path));
+        assert!(!service.path_exists(path));
+
+        // Exists and not hidden but ignored
+        let path = "target";
+        assert!(PathBuf::from(path).exists());
+        assert!(!service.path_is_hidden(path));
+        assert!(!service.path_exists(path));
+    }
 
     #[test]
     fn path_is_hidden() {
@@ -576,7 +601,8 @@ mod t_server {
     fn path_is_ignored() {
         let args = Args::default();
         let (service, _) = bootstrap(args);
-        assert!(!service.path_is_ignored("target"));
+        assert!(service.path_is_ignored("target"));
+        assert!(service.path_is_ignored("sub-crate/target"));
     }
 
     #[test]
@@ -588,13 +614,13 @@ mod t_server {
         };
         let (service, _) = bootstrap(args);
         assert!(!service.path_is_ignored("target"));
+        assert!(!service.path_is_ignored("sub-crate/target"));
 
         // README.md is not ignored.
-        let args = Args {
-            ..Default::default()
-        };
+        let args = Args::default();
         let (service, _) = bootstrap(args);
         assert!(!service.path_is_ignored("README.md"));
+        assert!(!service.path_is_ignored("Cargo.lock"));
     }
 
     #[test]
