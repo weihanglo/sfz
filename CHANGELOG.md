@@ -3,22 +3,36 @@
 This project adheres to [Semantic Versioning](http://semver.org/).  
 Every release, along with the migration instructions, is documented on this file and Github [Releases](https://github.com/weihanglo/sfz/releases) page.
 
-## [Unreleased](https://github.com/weihanglo/sfz/compare/0.1.2...HEAD)
+## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.2.0...HEAD)
 
-## [0.1.2] - 2020-08-28
+## [v0.2.0] - 2020-08-31
 
-### [Changes][0.1.2-changes]
+### [Changes][v0.2.0-changes]
 
-- Fix range header off-by-one error ([#39](https://github.com/weihanglo/sfz/issues/39))
+- Renamed `PathExt::is_hidden` to `PathExt::is_relatively_hidden` and now would check if any parent path component is prefixed with a dot. ([#46][])
+- Switch CI provider to GitHub Action
+- Upgrade lots of dependencies ([#41][]), including significant refactor on hyper 0.11 to 0.13 ([#42][])
 
-[0.1.2]: https://github.com/weihanglo/sfz/releases/tag/0.1.2
-[0.1.2-changes]: https://github.com/weihanglo/sfz/compare/0.1.1...0.1.2
+[v0.2.0]: https://github.com/weihanglo/sfz/releases/tag/v0.2.0
+[v0.2.0-changes]: https://github.com/weihanglo/sfz/compare/v0.1.2...v0.2.0
+[#41]: https://github.com/weihanglo/sfz/pull/41
+[#42]: https://github.com/weihanglo/sfz/pull/42
+[#46]: https://github.com/weihanglo/sfz/pull/46
+
+## [v0.1.2] - 2020-08-28
+
+### [Changes][v0.1.2-changes]
+
+- Fixed range header off-by-one error ([#39](https://github.com/weihanglo/sfz/issues/39))
+
+[v0.1.2]: https://github.com/weihanglo/sfz/releases/tag/v0.1.2
+[v0.1.2-changes]: https://github.com/weihanglo/sfz/compare/0.1.1...v0.1.2
 
 ## [0.1.1] - 2020-06-04
 
 ### [Changes][0.1.1-changes]
 
-- Fix duplicated prefix slash regression issue ([#31](https://github.com/weihanglo/sfz/issues/31))
+- Fixed duplicated prefix slash regression issue ([#31](https://github.com/weihanglo/sfz/issues/31))
 
 [0.1.1]: https://github.com/weihanglo/sfz/releases/tag/0.1.1
 [0.1.1-changes]: https://github.com/weihanglo/sfz/compare/0.1.0...0.1.1
