@@ -13,10 +13,6 @@ exclude = ["HomebrewFormula"]
 license = "MIT/Apache-2.0"
 edition = "2018"
 
-[badges]
-appveyor = { repository = "weihanglo/sfz" }
-travis-ci = { repository = "weihanglo/sfz" }
-
 [dependencies]
 # Command-line
 clap = { version = "2.33", default-features = false }
