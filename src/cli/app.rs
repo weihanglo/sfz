@@ -7,7 +7,7 @@
 // except according to those terms.
 
 use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version};
-use clap::{ArgMatches, Arg};
+use clap::{Arg, ArgMatches};
 
 const ABOUT: &str = concat!("\n", crate_description!()); // Add extra newline.
 
