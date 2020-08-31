@@ -9,13 +9,13 @@
 use std::env;
 use std::fs::canonicalize;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{value_t, App};
 
 use crate::BoxResult;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Args {
     pub address: String,
     pub port: u16,
@@ -51,10 +51,7 @@ impl Args {
         let follow_links = matches.is_present("follow-links");
         let render_index = matches.is_present("render-index");
         let log = !matches.is_present("no-log");
-
-        let path_prefix = matches
-            .value_of("path-prefix")
-            .and_then(|p| Some(p.to_owned()));
+        let path_prefix = matches.value_of("path-prefix").map(str::to_string);
 
         Ok(Args {
             address,
@@ -73,25 +70,24 @@ impl Args {
     }
 
     /// Parse path.
-    fn parse_path(path: &str) -> BoxResult<PathBuf> {
-        let path = PathBuf::from(path);
+    fn parse_path<P: AsRef<Path>>(path: P) -> BoxResult<PathBuf> {
+        let path = path.as_ref();
         if !path.exists() {
             bail!("error: path \"{}\" doesn't exist", path.display());
         }
 
-        (if path.is_absolute() {
-            path.canonicalize()
-        } else {
-            env::current_dir().map(|p| p.join(&path))
-        })
-        .and_then(canonicalize)
-        .or_else(|err| {
-            bail!(
-                "error: failed to access path \"{}\": {}",
-                path.display(),
-                err,
-            )
-        })
+        env::current_dir()
+            .and_then(|mut p| {
+                p.push(path); // If path is absolute, it replaces the current path.
+                canonicalize(p)
+            })
+            .or_else(|err| {
+                bail!(
+                    "error: failed to access path \"{}\": {}",
+                    path.display(),
+                    err,
+                )
+            })
     }
 
     /// Construct socket address from arguments.
@@ -112,36 +108,73 @@ impl Args {
 #[cfg(test)]
 mod t {
     use super::*;
+    use crate::app;
     use std::fs::File;
     use tempdir::TempDir;
 
-    fn temp_name() -> &'static str {
+    const fn temp_name() -> &'static str {
         concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"))
+    }
+
+    #[test]
+    fn parse_default() {
+        let old_wd = env::current_dir().unwrap();
+
+        env::set_current_dir(env!("CARGO_MANIFEST_DIR")).unwrap();
+        let args = Args::parse(app()).unwrap();
+        assert_eq!(
+            args,
+            Args {
+                address: "127.0.0.1".to_string(),
+                all: false,
+                cache: 0,
+                compress: true,
+                cors: false,
+                follow_links: false,
+                ignore: true,
+                log: true,
+                path: env!("CARGO_MANIFEST_DIR").into(),
+                path_prefix: None,
+                render_index: false,
+                port: 5000
+            }
+        );
+
+        // Restore old working directory
+        env::set_current_dir(old_wd).unwrap();
     }
 
     #[test]
     fn parse_absolute_path() {
         let tmp_dir = TempDir::new(temp_name()).unwrap();
         let path = tmp_dir.path().join("temp.txt");
-        let path_str = path.to_str().unwrap();
         assert!(path.is_absolute());
         // error: No exists
-        assert!(Args::parse_path(path_str).is_err());
+        assert!(Args::parse_path(&path).is_err());
         // create file
         File::create(&path).unwrap();
-        assert!(Args::parse_path(path_str).is_ok());
+        assert_eq!(
+            Args::parse_path(&path).unwrap(),
+            path.canonicalize().unwrap(),
+        );
     }
 
     #[test]
     fn parse_relative_path() {
+        let old_wd = env::current_dir().unwrap();
+
         let tmp_dir = TempDir::new(temp_name()).unwrap();
-        let path = tmp_dir.path().join("temp.txt");
-        let relative_path = path.strip_prefix(tmp_dir.path()).unwrap();
-        let relative_path_str = path.to_str().unwrap();
+        let relative_path: &Path = "temp.txt".as_ref();
         env::set_current_dir(tmp_dir.path()).unwrap();
-        File::create(&relative_path).unwrap();
+        File::create(relative_path).unwrap();
+
         assert!(relative_path.is_relative());
-        // Relative path is ok
-        assert!(Args::parse_path(relative_path_str).is_ok());
+        assert_eq!(
+            Args::parse_path(relative_path).unwrap(),
+            tmp_dir.path().join(relative_path).canonicalize().unwrap(),
+        );
+
+        // Restore old working directory
+        env::set_current_dir(old_wd).unwrap();
     }
 }
