@@ -87,7 +87,7 @@ The simplest way to start serving files is to run this command:
 sfz [FLAGS] [OPTIONS] [path]
 ```
 
-The command above will start serving your current working directory on `0.0.0.0:5000` by default.
+The command above will start serving your current working directory on `127.0.0.1:5000` by default.
 
 If you want to serve another directory, pass `[path]` positional argument in with either absolute or relaitve path.
 
@@ -117,7 +117,7 @@ FLAGS:
     -V, --version         Prints version information
 
 OPTIONS:
-    -b, --bind <address>        Specify bind address [default: 0.0.0.0]
+    -b, --bind <address>        Specify bind address [default: 127.0.0.1]
     -c, --cache <seconds>       Specify max-age of HTTP caching in seconds [default: 0]
         --path-prefix <path>    Specify an url path prefix, helpful when running behing a reverse proxy
     -p, --port <port>           Specify port to listen on [default: 5000]

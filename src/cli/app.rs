@@ -7,11 +7,11 @@
 // except according to those terms.
 
 use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version};
-use clap::{App, Arg};
+use clap::{ArgMatches, Arg};
 
 const ABOUT: &str = concat!("\n", crate_description!()); // Add extra newline.
 
-pub fn app() -> App<'static, 'static> {
+pub fn matches<'a>() -> ArgMatches<'a> {
     let arg_port = Arg::with_name("port")
         .short("p")
         .long("port")
@@ -22,7 +22,7 @@ pub fn app() -> App<'static, 'static> {
     let arg_address = Arg::with_name("address")
         .short("b")
         .long("bind")
-        .default_value("0.0.0.0")
+        .default_value("127.0.0.1")
         .help("Specify bind address")
         .value_name("address");
 
@@ -90,4 +90,16 @@ pub fn app() -> App<'static, 'static> {
         .arg(arg_follow_links)
         .arg(arg_render_index)
         .arg(arg_path_prefix)
+        .get_matches()
+}
+
+#[cfg(test)]
+mod t {
+    use super::*;
+
+    #[test]
+    fn get_matches() {
+        let matches = matches();
+        assert!(matches.usage().starts_with("USAGE"))
+    }
 }
