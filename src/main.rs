@@ -17,14 +17,14 @@ mod extensions;
 mod http;
 mod server;
 
-use crate::cli::{app, Args};
+use crate::cli::{matches, Args};
 use crate::server::serve;
 
 pub type BoxResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 #[tokio::main]
 async fn main() {
-    Args::parse(app())
+    Args::parse(matches())
         .map(serve)
         .unwrap_or_else(handle_err)
         .await

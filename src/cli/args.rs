@@ -11,7 +11,7 @@ use std::fs::canonicalize;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-use clap::{value_t, App};
+use clap::{value_t, ArgMatches};
 
 use crate::BoxResult;
 
@@ -36,8 +36,7 @@ impl Args {
     ///
     /// If a parsing error ocurred, exit the process and print out informative
     /// error message to user.
-    pub fn parse(app: App<'_, '_>) -> BoxResult<Args> {
-        let matches = app.get_matches();
+    pub fn parse(matches: ArgMatches<'_>) -> BoxResult<Args> {
         let address = matches.value_of("address").unwrap_or_default().to_owned();
         let port = value_t!(matches.value_of("port"), u16)?;
         let cache = value_t!(matches.value_of("cache"), u64)?;
@@ -108,7 +107,7 @@ impl Args {
 #[cfg(test)]
 mod t {
     use super::*;
-    use crate::app;
+    use crate::matches;
     use std::fs::File;
     use tempdir::TempDir;
 
@@ -121,7 +120,7 @@ mod t {
         let old_wd = env::current_dir().unwrap();
 
         env::set_current_dir(env!("CARGO_MANIFEST_DIR")).unwrap();
-        let args = Args::parse(app()).unwrap();
+        let args = Args::parse(matches()).unwrap();
         assert_eq!(
             args,
             Args {
