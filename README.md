@@ -1,13 +1,11 @@
 # [![sfz](.github/sfz.svg)][sfz]
 
-[![Rust Edition](https://img.shields.io/badge/Rust_Edition-2018-green.svg)](https://rust-lang-nursery.github.io/edition-guide/rust-2018)
-[![sfz on Crates.io](https://img.shields.io/crates/v/sfz.svg)](https://crates.io/crates/sfz)
-
+[![Crates.io](https://img.shields.io/crates/v/sfz.svg)](https://crates.io/crates/sfz)
 [![Build Status](https://github.com/weihanglo/sfz/workflows/CI/badge.svg)](https://github.com/weihanglo/sfz/actions?query=workflow%3ACI)
-[![Code coverage](https://codecov.io/gh/weihanglo/sfz/coverage.svg)](https://codecov.io/gh/weihanglo/sfz)
-[![Line of code](https://tokei.rs/b1/github/weihanglo/sfz?category=code)](https://github.com/weihanglo/sfz)
+[![Code Coverage](https://codecov.io/gh/weihanglo/sfz/coverage.svg)](https://codecov.io/gh/weihanglo/sfz)
+[![Lines of Code](https://tokei.rs/b1/github/weihanglo/sfz?category=code)][sfz]
 
-[sfz][sfz], or **S**tatic **F**ile **Z**erver, is a simple command-line tool serving static files for you.
+sfz, or **S**tatic **F**ile **Z**erver, is a simple command-line tool serving static files for you.
 
 ![](.github/cover.png)
 
