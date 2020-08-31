@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 use ignore::WalkBuilder;
 use tera::{Context, Tera};
 
-use super::Item;
 use crate::extensions::{PathExt, PathType};
+use crate::server::Item;
 
 /// Send a HTML page of all files under the path.
 ///
@@ -115,15 +115,7 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     // Sort files (dir-first and lexicographic ordering).
     files.sort_unstable();
 
-    // Render page with Tera template engine.
-    let mut ctx = Context::new();
-    ctx.insert("files", &files);
-    ctx.insert("dir_name", &dir_name);
-    ctx.insert("paths", &paths);
-    ctx.insert("style", include_str!("style.css"));
-    let page = Tera::one_off(include_str!("index.html"), &ctx, true)
-        .unwrap_or_else(|e| format!("500 Internal server error: {}", e));
-    Ok(Vec::from(page))
+    Ok(render(&files, dir_name, &paths).into())
 }
 
 /// Send a buffer of file to client.
@@ -158,6 +150,28 @@ pub fn send_file_with_range<P: AsRef<Path>>(
         .take(end - start + 1)
         .read_to_end(&mut buffer)?;
     Ok(buffer)
+}
+
+/// Render page with Tera template engine.
+fn render(files: &[Item], dir_name: &str, paths: &[(&str, String)]) -> String {
+    let mut ctx = Context::new();
+    ctx.insert("files", files);
+    ctx.insert("dir_name", dir_name);
+    ctx.insert("paths", paths);
+    ctx.insert("style", include_str!("style.css"));
+    Tera::one_off(include_str!("index.html"), &ctx, true)
+        .unwrap_or_else(|e| format!("500 Internal server error: {}", e))
+}
+
+#[cfg(test)]
+mod t {
+    use super::*;
+
+    #[test]
+    fn render_successfully() {
+        let page = render(&vec![], "", &vec![]);
+        assert!(page.starts_with("<!DOCTYPE html>"))
+    }
 }
 
 #[cfg(test)]
