@@ -12,10 +12,19 @@ use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
 
 use ignore::WalkBuilder;
+use serde::Serialize;
 use tera::{Context, Tera};
 
 use crate::extensions::{PathExt, PathType};
-use crate::server::Item;
+
+/// Serializable `Item` that would be passed to Tera for template rendering.
+/// The order of struct fields is deremined to ensure sorting precedence.
+#[derive(Debug, Serialize, Eq, PartialEq, Ord, PartialOrd)]
+struct Item {
+    path_type: PathType,
+    name: String,
+    path: String,
+}
 
 /// Send a HTML page of all files under the path.
 ///

@@ -26,11 +26,10 @@ use hyper::StatusCode;
 use ignore::gitignore::Gitignore;
 use mime_guess::mime;
 use percent_encoding::percent_decode;
-use serde::Serialize;
 
 use self::send::{send_dir, send_file, send_file_with_range};
 use crate::cli::Args;
-use crate::extensions::{MimeExt, PathExt, PathType, SystemTimeExt};
+use crate::extensions::{MimeExt, PathExt, SystemTimeExt};
 use crate::http::conditional_requests::{is_fresh, is_precondition_failed};
 use crate::http::content_encoding::{compress, get_prior_encoding};
 use crate::http::range_requests::{is_range_fresh, is_satisfiable_range};
@@ -40,15 +39,6 @@ const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PK
 
 pub type Request = hyper::Request<hyper::Body>;
 pub type Response = hyper::Response<hyper::Body>;
-
-/// Serializable `Item` that would be passed to Tera for template rendering.
-/// The order of struct fields is deremined to ensure sorting precedence.
-#[derive(Debug, Serialize, Eq, PartialEq, Ord, PartialOrd)]
-pub struct Item {
-    path_type: PathType,
-    name: String,
-    path: String,
-}
 
 /// Run the server.
 pub async fn serve(args: Args) -> BoxResult<()> {
