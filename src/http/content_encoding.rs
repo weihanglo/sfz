@@ -250,4 +250,14 @@ mod t_compress {
         let error = compress(b"hello", "unrecognized").unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::Other);
     }
+
+    #[test]
+    fn compressed() {
+        let buf = compress(b"xxxxx", DEFLATE);
+        assert!(!buf.unwrap().is_empty());
+        let buf = compress(b"xxxxx", GZIP);
+        assert!(!buf.unwrap().is_empty());
+        let buf = compress(b"xxxxx", BR);
+        assert!(!buf.unwrap().is_empty());
+    }
 }
