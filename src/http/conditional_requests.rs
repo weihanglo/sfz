@@ -155,4 +155,13 @@ mod t_fresh {
         req.headers_mut().typed_insert(if_modified_since);
         assert!(is_fresh(&req, &etag, date));
     }
+
+    #[test]
+    fn only_if_modified_since() {
+        let (mut req, etag, date) = init_request();
+        let future = date + Duration::from_secs(1);
+        let if_modified_since = IfModifiedSince::from(future);
+        req.headers_mut().typed_insert(if_modified_since);
+        assert!(is_fresh(&req, &etag, date));
+    }
 }
