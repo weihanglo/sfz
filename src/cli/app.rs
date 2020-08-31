@@ -22,7 +22,7 @@ pub fn app() -> App<'static, 'static> {
     let arg_address = Arg::with_name("address")
         .short("b")
         .long("bind")
-        .default_value("0.0.0.0")
+        .default_value("127.0.0.1")
         .help("Specify bind address")
         .value_name("address");
 
