@@ -108,6 +108,7 @@ impl Args {
 mod t {
     use super::*;
     use crate::matches;
+    use crate::test_utils::with_current_dir;
     use std::fs::File;
     use tempdir::TempDir;
 
@@ -117,30 +118,26 @@ mod t {
 
     #[test]
     fn parse_default() {
-        let old_wd = env::current_dir().unwrap();
-
-        env::set_current_dir(env!("CARGO_MANIFEST_DIR")).unwrap();
-        let args = Args::parse(matches()).unwrap();
-        assert_eq!(
-            args,
-            Args {
-                address: "127.0.0.1".to_string(),
-                all: false,
-                cache: 0,
-                compress: true,
-                cors: false,
-                follow_links: false,
-                ignore: true,
-                log: true,
-                path: env!("CARGO_MANIFEST_DIR").into(),
-                path_prefix: None,
-                render_index: false,
-                port: 5000
-            }
-        );
-
-        // Restore old working directory
-        env::set_current_dir(old_wd).unwrap();
+        with_current_dir(env!("CARGO_MANIFEST_DIR"), || {
+            let args = Args::parse(matches()).unwrap();
+            assert_eq!(
+                args,
+                Args {
+                    address: "127.0.0.1".to_string(),
+                    all: false,
+                    cache: 0,
+                    compress: true,
+                    cors: false,
+                    follow_links: false,
+                    ignore: true,
+                    log: true,
+                    path: env!("CARGO_MANIFEST_DIR").into(),
+                    path_prefix: None,
+                    render_index: false,
+                    port: 5000
+                }
+            );
+        });
     }
 
     #[test]
@@ -160,20 +157,16 @@ mod t {
 
     #[test]
     fn parse_relative_path() {
-        let old_wd = env::current_dir().unwrap();
-
         let tmp_dir = TempDir::new(temp_name()).unwrap();
-        let relative_path: &Path = "temp.txt".as_ref();
-        env::set_current_dir(tmp_dir.path()).unwrap();
-        File::create(relative_path).unwrap();
+        with_current_dir(tmp_dir.path(), || {
+            let relative_path: &Path = "temp.txt".as_ref();
+            File::create(relative_path).unwrap();
 
-        assert!(relative_path.is_relative());
-        assert_eq!(
-            Args::parse_path(relative_path).unwrap(),
-            tmp_dir.path().join(relative_path).canonicalize().unwrap(),
-        );
-
-        // Restore old working directory
-        env::set_current_dir(old_wd).unwrap();
+            assert!(relative_path.is_relative());
+            assert_eq!(
+                Args::parse_path(relative_path).unwrap(),
+                tmp_dir.path().join(relative_path).canonicalize().unwrap(),
+            );
+        });
     }
 }

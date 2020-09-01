@@ -363,6 +363,7 @@ impl InnerService {
 #[cfg(test)]
 mod t_server {
     use super::*;
+    use crate::test_utils::{get_tests_dir, with_current_dir};
     use std::fs::File;
     use tempdir::TempDir;
 
@@ -386,12 +387,10 @@ mod t_server {
     }
 
     fn bootstrap(args: Args) -> (InnerService, Response) {
-        std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"))
-            .expect("fail to set project root as current working directory");
         (InnerService::new(args), Response::default())
     }
 
-    fn temp_name() -> &'static str {
+    const fn temp_name() -> &'static str {
         concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"))
     }
 
@@ -528,35 +527,46 @@ mod t_server {
 
     #[test]
     fn path_exists() {
-        let args = Args::default();
-        let (service, _) = bootstrap(args);
-        // Exists but not hidden nor ignored
-        assert!(service.path_exists("README.md"));
+        with_current_dir(get_tests_dir(), || {
+            let args = Args::default();
+            let (service, _) = bootstrap(args);
+            // Exists but not hidden nor ignored
+            assert!(service.path_exists("file.txt"));
+        });
     }
 
     #[test]
     fn path_does_not_exists() {
-        let args = Args {
-            all: false,
-            ..Default::default()
-        };
-        let (service, _) = bootstrap(args);
-        // Not exists
-        let path = "NOT_EXISTS_README.md";
-        assert!(!PathBuf::from(path).exists());
-        assert!(!service.path_exists(path));
+        with_current_dir(get_tests_dir(), || {
+            let args = Args {
+                all: false,
+                ..Default::default()
+            };
+            let (service, _) = bootstrap(args);
 
-        // Exists but hidden
-        let path = ".github/workflows/ci.yaml";
-        assert!(PathBuf::from(path).exists());
-        assert!(service.path_is_hidden(path));
-        assert!(!service.path_exists(path));
+            // Not exists
+            let path = "NOT_EXISTS_README.md";
+            assert!(!PathBuf::from(path).exists());
+            assert!(!service.path_exists(path));
 
-        // Exists and not hidden but ignored
-        let path = "target";
-        assert!(PathBuf::from(path).exists());
-        assert!(!service.path_is_hidden(path));
-        assert!(!service.path_exists(path));
+            // Exists but hidden
+            let path = ".hidden.html";
+            assert!(PathBuf::from(path).exists());
+            assert!(service.path_is_hidden(path));
+            assert!(!service.path_exists(path));
+
+            // Exists but the file's parent is hidden
+            let path = ".hidden/nested.html";
+            assert!(PathBuf::from(path).exists());
+            assert!(service.path_is_hidden(path));
+            assert!(!service.path_exists(path));
+
+            // Exists and not hidden but ignored
+            let path = "ignore_pattern";
+            assert!(PathBuf::from(path).exists());
+            assert!(!service.path_is_hidden(path));
+            assert!(!service.path_exists(path));
+        });
     }
 
     #[test]
@@ -589,28 +599,32 @@ mod t_server {
 
     #[test]
     fn path_is_ignored() {
-        let args = Args::default();
-        let (service, _) = bootstrap(args);
-        assert!(service.path_is_ignored("target"));
-        assert!(service.path_is_ignored("sub-crate/target"));
+        with_current_dir(get_tests_dir(), || {
+            let args = Args::default();
+            let (service, _) = bootstrap(args);
+            assert!(service.path_is_ignored("ignore_pattern"));
+            assert!(service.path_is_ignored("dir/ignore_pattern"));
+        });
     }
 
     #[test]
     fn path_is_not_ignored() {
-        // `--no-ignore` flag is on
-        let args = Args {
-            ignore: false,
-            ..Default::default()
-        };
-        let (service, _) = bootstrap(args);
-        assert!(!service.path_is_ignored("target"));
-        assert!(!service.path_is_ignored("sub-crate/target"));
+        with_current_dir(get_tests_dir(), || {
+            // `--no-ignore` flag is on
+            let args = Args {
+                ignore: false,
+                ..Default::default()
+            };
+            let (service, _) = bootstrap(args);
+            assert!(!service.path_is_ignored("ignore_pattern"));
+            assert!(!service.path_is_ignored("dir/ignore_pattern"));
 
-        // README.md is not ignored.
-        let args = Args::default();
-        let (service, _) = bootstrap(args);
-        assert!(!service.path_is_ignored("README.md"));
-        assert!(!service.path_is_ignored("Cargo.lock"));
+            // file.txt and .hidden.html is not ignored.
+            let args = Args::default();
+            let (service, _) = bootstrap(args);
+            assert!(!service.path_is_ignored("file.txt"));
+            assert!(!service.path_is_ignored(".hidden.html"));
+        });
     }
 
     #[test]
