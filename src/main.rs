@@ -16,6 +16,8 @@ mod cli;
 mod extensions;
 mod http;
 mod server;
+#[cfg(test)]
+pub mod test_utils;
 
 use crate::cli::{matches, Args};
 use crate::server::serve;
