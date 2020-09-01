@@ -10,19 +10,8 @@ use std::path::{Component, Path};
 use std::time::SystemTime;
 
 use mime_guess::{mime, Mime};
-use serde::Serialize;
 
-/// Indicate that a path is a normal file/dir or a symlink to another path/dir.
-///
-/// This enum is serializable in order to rendering with Tera template engine.
-/// And the order of enum variants is deremined to ensure sorting precedence.
-#[derive(Debug, Serialize, Eq, PartialEq, Ord, PartialOrd)]
-pub enum PathType {
-    Dir,
-    SymlinkDir,
-    File,
-    SymlinkFile,
-}
+use crate::server::PathType;
 
 pub trait PathExt {
     fn mime(&self) -> Option<Mime>;

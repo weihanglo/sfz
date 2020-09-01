@@ -15,7 +15,8 @@ use ignore::WalkBuilder;
 use serde::Serialize;
 use tera::{Context, Tera};
 
-use crate::extensions::{PathExt, PathType};
+use crate::extensions::PathExt;
+use crate::server::PathType;
 
 /// Serializable `Item` that would be passed to Tera for template rendering.
 /// The order of struct fields is deremined to ensure sorting precedence.

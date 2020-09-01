@@ -13,4 +13,4 @@ mod serve;
 pub type Request = hyper::Request<hyper::Body>;
 pub type Response = hyper::Response<hyper::Body>;
 
-pub use self::serve::serve;
+pub use self::serve::{serve, PathType};

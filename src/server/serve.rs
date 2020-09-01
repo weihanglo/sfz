@@ -15,6 +15,7 @@ use hyper::StatusCode;
 use ignore::gitignore::Gitignore;
 use mime_guess::mime;
 use percent_encoding::percent_decode;
+use serde::Serialize;
 
 use crate::cli::Args;
 use crate::extensions::{MimeExt, PathExt, SystemTimeExt};
@@ -26,6 +27,18 @@ use crate::server::{res, Request, Response};
 use crate::BoxResult;
 
 const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+
+/// Indicate that a path is a normal file/dir or a symlink to another path/dir.
+///
+/// This enum is serializable in order to rendering with Tera template engine.
+/// And the order of enum variants is deremined to ensure sorting precedence.
+#[derive(Debug, Serialize, Eq, PartialEq, Ord, PartialOrd)]
+pub enum PathType {
+    Dir,
+    SymlinkDir,
+    File,
+    SymlinkFile,
+}
 
 /// Run the server.
 pub async fn serve(args: Args) -> BoxResult<()> {
