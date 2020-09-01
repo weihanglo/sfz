@@ -27,6 +27,13 @@ struct Item {
     path: String,
 }
 
+/// Breadcrumb represents a directory name and a path.
+#[derive(Debug, Serialize)]
+struct Breadcrumb<'a> {
+    name: &'a str,
+    path: String,
+}
+
 /// Send a HTML page of all files under the path.
 ///
 /// # Parameters
@@ -48,32 +55,10 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     // Prepare dirname of current dir relative to base path.
     let prefix = path_prefix.unwrap_or("");
 
-    let (dir_name, paths) = {
-        let dir_name = base_path.filename_str();
-        let path = dir_path.strip_prefix(base_path).unwrap();
+    // Breadcrumbs for navigation.
+    let breadcrumbs = create_breadcrumbs(dir_path, base_path, prefix);
 
-        let path_names = path.iter().map(|s| s.to_str().unwrap());
-        let abs_paths = path
-            .iter()
-            .scan(PathBuf::new(), |state, path| {
-                state.push(path);
-                Some(state.to_owned())
-            })
-            .map(|s| format!("/{}", s.to_str().unwrap()));
-        // Tuple structure: (name, path)
-        let paths = vec![(dir_name, String::new())];
-
-        let paths = paths
-            .into_iter()
-            .chain(path_names.zip(abs_paths))
-            .map(|mut p| {
-                p.1 = format!("{}{}", prefix, if p.1.is_empty() { "/" } else { &p.1 },);
-                p
-            })
-            .collect::<Vec<_>>();
-        (dir_name, paths)
-    };
-
+    // Collect filename and there links.
     let files_iter = WalkBuilder::new(dir_path)
         .standard_filters(false) // Disable all standard filters.
         .git_ignore(with_ignore)
@@ -101,7 +86,6 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     } else {
         // CWD == sub dir of base dir
         // Append an item for popping back to parent directory.
-
         let path = format!(
             "{}/{}",
             prefix,
@@ -125,7 +109,7 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     // Sort files (dir-first and lexicographic ordering).
     files.sort_unstable();
 
-    Ok(render(&files, dir_name, &paths).into())
+    Ok(render(dir_path.filename_str(), &files, &breadcrumbs).into())
 }
 
 /// Send a buffer of file to client.
@@ -162,12 +146,49 @@ pub fn send_file_with_range<P: AsRef<Path>>(
     Ok(buffer)
 }
 
+/// Create breadcrumbs for navigation.
+fn create_breadcrumbs<'a>(
+    dir_path: &'a Path,
+    base_path: &'a Path,
+    prefix: &str,
+) -> Vec<Breadcrumb<'a>> {
+    let path = dir_path.strip_prefix(base_path).unwrap();
+    let path_names = path.iter().map(|s| s.to_str().unwrap());
+    let abs_paths = path
+        .iter()
+        .scan(PathBuf::new(), |state, path| {
+            state.push(path);
+            Some(state.to_owned())
+        })
+        .map(|s| format!("/{}", s.to_str().unwrap()));
+    let breadcrumbs_iter = path_names
+        .zip(abs_paths)
+        .map(|(name, path)| Breadcrumb { name, path });
+
+    let base_breadcrumb = Breadcrumb {
+        name: base_path.filename_str(),
+        path: String::new(),
+    };
+    vec![base_breadcrumb]
+        .into_iter()
+        .chain(breadcrumbs_iter)
+        .map(|mut b| {
+            b.path = format!(
+                "{}{}",
+                prefix,
+                if b.name.is_empty() { "/" } else { &b.path },
+            );
+            b
+        })
+        .collect::<Vec<_>>()
+}
+
 /// Render page with Tera template engine.
-fn render(files: &[Item], dir_name: &str, paths: &[(&str, String)]) -> String {
+fn render(dir_name: &str, files: &[Item], breadcrumbs: &[Breadcrumb]) -> String {
     let mut ctx = Context::new();
-    ctx.insert("files", files);
     ctx.insert("dir_name", dir_name);
-    ctx.insert("paths", paths);
+    ctx.insert("files", files);
+    ctx.insert("breadcrumbs", breadcrumbs);
     ctx.insert("style", include_str!("style.css"));
     Tera::one_off(include_str!("index.html"), &ctx, true)
         .unwrap_or_else(|e| format!("500 Internal server error: {}", e))
@@ -179,8 +200,63 @@ mod t {
 
     #[test]
     fn render_successfully() {
-        let page = render(&vec![], "", &vec![]);
+        let page = render("", &vec![], &vec![]);
         assert!(page.starts_with("<!DOCTYPE html>"))
+    }
+    #[test]
+    fn breadcrumbs() {
+        let base_path = Path::new("/a/b");
+
+        // Only one level
+        let dir_path = Path::new("/a/b");
+        let breadcrumbs = create_breadcrumbs(dir_path, base_path, "");
+        assert_eq!(breadcrumbs.len(), 1);
+        assert_eq!(breadcrumbs[0].name, "b");
+        assert_eq!(breadcrumbs[0].path, "");
+
+        // Nested two levels
+        let dir_path = Path::new("/a/b/c");
+        let breadcrumbs = create_breadcrumbs(dir_path, base_path, "");
+        assert_eq!(breadcrumbs.len(), 2);
+        assert_eq!(breadcrumbs[0].name, "b");
+        assert_eq!(breadcrumbs[0].path, "");
+        assert_eq!(breadcrumbs[1].name, "c");
+        assert_eq!(breadcrumbs[1].path, "/c");
+
+        // Nested four levels
+        let dir_path = Path::new("/a/b/c/d");
+        let breadcrumbs = create_breadcrumbs(dir_path, base_path, "");
+        assert_eq!(breadcrumbs.len(), 3);
+        assert_eq!(breadcrumbs[0].name, "b");
+        assert_eq!(breadcrumbs[0].path, "");
+        assert_eq!(breadcrumbs[1].name, "c");
+        assert_eq!(breadcrumbs[1].path, "/c");
+        assert_eq!(breadcrumbs[2].name, "d");
+        assert_eq!(breadcrumbs[2].path, "/c/d");
+    }
+
+    #[test]
+    fn breadcrumbs_with_slashes() {
+        let base_path = Path::new("////a/b");
+        let dir_path = Path::new("////////a/b/c////////////");
+        let breadcrumbs = create_breadcrumbs(dir_path, base_path, "");
+        assert_eq!(breadcrumbs.len(), 2);
+        assert_eq!(breadcrumbs[0].name, "b");
+        assert_eq!(breadcrumbs[0].path, "");
+        assert_eq!(breadcrumbs[1].name, "c");
+        assert_eq!(breadcrumbs[1].path, "/c");
+    }
+
+    #[test]
+    fn prefixed_breadcrumbs() {
+        let base_path = Path::new("/a/b");
+        let dir_path = Path::new("/a/b/c/d");
+        let breadcrumbs = create_breadcrumbs(dir_path, base_path, "xdd~帥////");
+        assert_eq!(breadcrumbs.len(), 3);
+        assert_eq!(breadcrumbs[0].name, "b");
+        assert_eq!(breadcrumbs[0].path, "xdd~帥////");
+        assert_eq!(breadcrumbs[1].name, "c");
+        assert_eq!(breadcrumbs[1].path, "xdd~帥/////c");
     }
 }
 

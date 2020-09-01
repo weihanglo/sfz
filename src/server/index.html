@@ -7,14 +7,14 @@
     <style>{{ style | safe }}</style>
   </head>
   <body>
-    <div class="path">
-      {% for path in paths %}
+    <div class="breadcrumbs">
+      {% for breadcrumb in breadcrumbs %}
         {% if loop.last %}
-          <b>{{ path.0 }}</b>
+          <b>{{ breadcrumb.name }}</b>
         {% elif loop.first and not loop.last %}
-          <a href="{{ path.1 | safe | urlencode }}"><b>{{ path.0 }}</b></a>
+          <a href="{{ breadcrumb.path | safe | urlencode }}"><b>{{ breadcrumb.name }}</b></a>
         {% else %}
-          <a href="{{ path.1 | safe | urlencode }}">{{ path.0 }}</a>
+          <a href="{{ breadcrumb.path | safe | urlencode }}">{{ breadcrumb.name }}</a>
         {% endif %}
         <span class="separator">/</span>
       {% endfor %}

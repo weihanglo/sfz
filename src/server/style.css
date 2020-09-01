@@ -4,27 +4,27 @@ html {
   color: #24292e;
 }
 
-.path {
+.breadcrumbs {
   font-size: 1.25em;
   padding: 2.5em;
   padding-bottom: 0;
 }
 
-.path > a {
+.breadcrumbs > a {
   color: #0366d6;
   text-decoration: none;
 }
 
-.path > a:hover {
+.breadcrumbs > a:hover {
   text-decoration: underline;
 }
 
-/* final path */
-.path > b {
+/* final breadcrumb */
+.breadcrumbs > b {
   color: #24292e;
 }
 
-.path > .separator {
+.breadcrumbs > .separator {
   color: #586069;
 }
 
