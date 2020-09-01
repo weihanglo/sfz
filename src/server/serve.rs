@@ -207,19 +207,14 @@ impl InnerService {
     ///
     /// If there is a path prefix defined and `strip_prefix` returns `None`,
     /// return None. Otherwise return the path with the prefix stripped.
-    fn strip_path_prefix<'a, T: AsRef<Path>>(&self, path: &'a T) -> Option<&'a Path> {
+    fn strip_path_prefix<'a, P: AsRef<Path>>(&self, path: &'a P) -> Option<&'a Path> {
+        let path = path.as_ref();
         match self.args.path_prefix.as_deref() {
-            Some(mut path_prefix) => {
-                if path_prefix.starts_with('/') {
-                    path_prefix = &path_prefix[1..];
-                }
-
-                match path.as_ref().strip_prefix(path_prefix) {
-                    Ok(path) => Some(path),
-                    Err(_) => None,
-                }
+            Some(prefix) => {
+                let prefix = prefix.trim_start_matches('/');
+                path.strip_prefix(prefix).ok()
             }
-            None => Some(path.as_ref()),
+            None => Some(path),
         }
     }
 
