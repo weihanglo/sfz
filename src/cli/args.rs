@@ -112,6 +112,26 @@ mod t {
     use std::fs::File;
     use tempdir::TempDir;
 
+    impl Default for Args {
+        /// Just for convenience. We do not need a default at this time.
+        fn default() -> Self {
+            Self {
+                address: "127.0.0.1".to_owned(),
+                port: 5000,
+                cache: 0,
+                cors: true,
+                compress: true,
+                path: PathBuf::from("."),
+                all: true,
+                ignore: true,
+                follow_links: true,
+                render_index: true,
+                log: true,
+                path_prefix: None,
+            }
+        }
+    }
+
     const fn temp_name() -> &'static str {
         concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"))
     }
@@ -168,5 +188,26 @@ mod t {
                 tmp_dir.path().join(relative_path).canonicalize().unwrap(),
             );
         });
+    }
+
+    #[test]
+    fn parse_addresses() {
+        // IPv4
+        let args = Args::default();
+        assert!(args.address().is_ok());
+
+        // IPv6
+        let args = Args {
+            address: "[::1]".to_string(),
+            ..Default::default()
+        };
+        assert!(args.address().is_ok());
+
+        // Invalid
+        let args = Args {
+            address: "".to_string(),
+            ..Default::default()
+        };
+        assert!(args.address().is_err());
     }
 }

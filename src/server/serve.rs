@@ -370,25 +370,6 @@ mod t_server {
     use std::fs::File;
     use tempdir::TempDir;
 
-    impl Default for Args {
-        fn default() -> Self {
-            Self {
-                address: "127.0.0.1".to_owned(),
-                port: 5000,
-                cache: 0,
-                cors: true,
-                compress: true,
-                path: PathBuf::from("."),
-                all: true,
-                ignore: true,
-                follow_links: true,
-                render_index: true,
-                log: true,
-                path_prefix: None,
-            }
-        }
-    }
-
     fn bootstrap(args: Args) -> (InnerService, Response) {
         (InnerService::new(args), Response::default())
     }
