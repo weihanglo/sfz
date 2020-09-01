@@ -121,7 +121,7 @@ mod t {
                 cache: 0,
                 cors: true,
                 compress: true,
-                path: PathBuf::from("."),
+                path: ".".into(),
                 all: true,
                 ignore: true,
                 follow_links: true,
@@ -138,8 +138,17 @@ mod t {
 
     #[test]
     fn parse_default() {
-        with_current_dir(env!("CARGO_MANIFEST_DIR"), || {
+        let current_dir = env!("CARGO_MANIFEST_DIR");
+        with_current_dir(current_dir, || {
             let args = Args::parse(matches()).unwrap();
+
+            // See following link to figure out why we need canonicalize here.
+            // Thought this leaks some internal implementations....
+            //
+            // - https://stackoverflow.com/a/41233992/8851735
+            // - https://stackoverflow.com/q/50322817/8851735
+            let path = PathBuf::from(current_dir).canonicalize().unwrap();
+
             assert_eq!(
                 args,
                 Args {
@@ -151,7 +160,7 @@ mod t {
                     follow_links: false,
                     ignore: true,
                     log: true,
-                    path: env!("CARGO_MANIFEST_DIR").into(),
+                    path,
                     path_prefix: None,
                     render_index: false,
                     port: 5000
