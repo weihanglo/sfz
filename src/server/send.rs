@@ -9,7 +9,7 @@
 use std::convert::AsRef;
 use std::fs::File;
 use std::io::{self, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use ignore::WalkBuilder;
 use serde::Serialize;
@@ -152,34 +152,27 @@ fn create_breadcrumbs<'a>(
     base_path: &'a Path,
     prefix: &str,
 ) -> Vec<Breadcrumb<'a>> {
-    let path = dir_path.strip_prefix(base_path).unwrap();
-    let path_names = path.iter().map(|s| s.to_str().unwrap());
-    let abs_paths = path
-        .iter()
-        .scan(PathBuf::new(), |state, path| {
-            state.push(path);
-            Some(state.to_owned())
-        })
-        .map(|s| format!("/{}", s.to_str().unwrap()));
-    let breadcrumbs_iter = path_names
-        .zip(abs_paths)
-        .map(|(name, path)| Breadcrumb { name, path });
-
     let base_breadcrumb = Breadcrumb {
         name: base_path.filename_str(),
-        path: String::new(),
+        path: format!("{}/", prefix),
     };
     vec![base_breadcrumb]
         .into_iter()
-        .chain(breadcrumbs_iter)
-        .map(|mut b| {
-            b.path = format!(
-                "{}{}",
-                prefix,
-                if b.name.is_empty() { "/" } else { &b.path },
-            );
-            b
-        })
+        .chain(
+            dir_path
+                .strip_prefix(base_path)
+                .unwrap()
+                .iter()
+                .map(|s| s.to_str().unwrap())
+                .scan(prefix.to_string(), |path, name| {
+                    path.push('/');
+                    path.push_str(name);
+                    Some(Breadcrumb {
+                        name,
+                        path: path.clone(),
+                    })
+                }),
+        )
         .collect::<Vec<_>>()
 }
 
@@ -205,58 +198,77 @@ mod t {
     }
     #[test]
     fn breadcrumbs() {
-        let base_path = Path::new("/a/b");
-
         // Only one level
-        let dir_path = Path::new("/a/b");
+        let base_path = Path::new("/a");
+        let dir_path = Path::new("/a");
         let breadcrumbs = create_breadcrumbs(dir_path, base_path, "");
         assert_eq!(breadcrumbs.len(), 1);
-        assert_eq!(breadcrumbs[0].name, "b");
-        assert_eq!(breadcrumbs[0].path, "");
+        assert_eq!(breadcrumbs[0].name, "a");
+        assert_eq!(breadcrumbs[0].path, "/");
 
         // Nested two levels
-        let dir_path = Path::new("/a/b/c");
+        let base_path = Path::new("/a");
+        let dir_path = Path::new("/a/b");
         let breadcrumbs = create_breadcrumbs(dir_path, base_path, "");
         assert_eq!(breadcrumbs.len(), 2);
-        assert_eq!(breadcrumbs[0].name, "b");
-        assert_eq!(breadcrumbs[0].path, "");
-        assert_eq!(breadcrumbs[1].name, "c");
-        assert_eq!(breadcrumbs[1].path, "/c");
+        assert_eq!(breadcrumbs[0].name, "a");
+        assert_eq!(breadcrumbs[0].path, "/");
+        assert_eq!(breadcrumbs[1].name, "b");
+        assert_eq!(breadcrumbs[1].path, "/b");
 
         // Nested four levels
+        let base_path = Path::new("/a");
         let dir_path = Path::new("/a/b/c/d");
         let breadcrumbs = create_breadcrumbs(dir_path, base_path, "");
-        assert_eq!(breadcrumbs.len(), 3);
-        assert_eq!(breadcrumbs[0].name, "b");
-        assert_eq!(breadcrumbs[0].path, "");
-        assert_eq!(breadcrumbs[1].name, "c");
-        assert_eq!(breadcrumbs[1].path, "/c");
-        assert_eq!(breadcrumbs[2].name, "d");
-        assert_eq!(breadcrumbs[2].path, "/c/d");
+        assert_eq!(breadcrumbs.len(), 4);
+        assert_eq!(breadcrumbs[0].name, "a");
+        assert_eq!(breadcrumbs[0].path, "/");
+        assert_eq!(breadcrumbs[1].name, "b");
+        assert_eq!(breadcrumbs[1].path, "/b");
+        assert_eq!(breadcrumbs[2].name, "c");
+        assert_eq!(breadcrumbs[2].path, "/b/c");
+        assert_eq!(breadcrumbs[3].name, "d");
+        assert_eq!(breadcrumbs[3].path, "/b/c/d");
     }
 
     #[test]
     fn breadcrumbs_with_slashes() {
         let base_path = Path::new("////a/b");
-        let dir_path = Path::new("////////a/b/c////////////");
+        let dir_path = Path::new("////////a//////b///c////////////");
         let breadcrumbs = create_breadcrumbs(dir_path, base_path, "");
         assert_eq!(breadcrumbs.len(), 2);
         assert_eq!(breadcrumbs[0].name, "b");
-        assert_eq!(breadcrumbs[0].path, "");
+        assert_eq!(breadcrumbs[0].path, "/");
         assert_eq!(breadcrumbs[1].name, "c");
         assert_eq!(breadcrumbs[1].path, "/c");
     }
 
     #[test]
     fn prefixed_breadcrumbs() {
-        let base_path = Path::new("/a/b");
-        let dir_path = Path::new("/a/b/c/d");
-        let breadcrumbs = create_breadcrumbs(dir_path, base_path, "xdd~帥////");
+        let base_path = Path::new("/a");
+        let dir_path = Path::new("/a/b/c");
+        let breadcrumbs = create_breadcrumbs(dir_path, base_path, "xdd~帥//");
         assert_eq!(breadcrumbs.len(), 3);
-        assert_eq!(breadcrumbs[0].name, "b");
-        assert_eq!(breadcrumbs[0].path, "xdd~帥////");
-        assert_eq!(breadcrumbs[1].name, "c");
-        assert_eq!(breadcrumbs[1].path, "xdd~帥/////c");
+        assert_eq!(breadcrumbs[0].name, "a");
+        assert_eq!(breadcrumbs[0].path, "xdd~帥///");
+        assert_eq!(breadcrumbs[1].name, "b");
+        assert_eq!(breadcrumbs[1].path, "xdd~帥///b");
+        assert_eq!(breadcrumbs[2].name, "c");
+        assert_eq!(breadcrumbs[2].path, "xdd~帥///b/c");
+    }
+
+    #[test]
+    fn breadcrumbs_from_root() {
+        let base_path = Path::new("/");
+        let dir_path = Path::new("/a/b");
+        let breadcrumbs = create_breadcrumbs(dir_path, base_path, "");
+        assert_eq!(breadcrumbs.len(), 3);
+        assert_eq!(breadcrumbs[0].name, "");
+        assert_eq!(breadcrumbs[0].path, "/");
+        assert_eq!(breadcrumbs[1].name, "a");
+        assert_eq!(breadcrumbs[1].path, "/a");
+        assert_eq!(breadcrumbs[2].name, "b");
+        assert_eq!(breadcrumbs[2].path, "/a/b");
     }
 }
 
