@@ -247,14 +247,14 @@ mod t {
     fn prefixed_breadcrumbs() {
         let base_path = Path::new("/a");
         let dir_path = Path::new("/a/b/c");
-        let breadcrumbs = create_breadcrumbs(dir_path, base_path, "xdd~帥//");
+        let breadcrumbs = create_breadcrumbs(dir_path, base_path, "/xdd~帥//");
         assert_eq!(breadcrumbs.len(), 3);
         assert_eq!(breadcrumbs[0].name, "a");
-        assert_eq!(breadcrumbs[0].path, "xdd~帥///");
+        assert_eq!(breadcrumbs[0].path, "/xdd~帥///");
         assert_eq!(breadcrumbs[1].name, "b");
-        assert_eq!(breadcrumbs[1].path, "xdd~帥///b");
+        assert_eq!(breadcrumbs[1].path, "/xdd~帥///b");
         assert_eq!(breadcrumbs[2].name, "c");
-        assert_eq!(breadcrumbs[2].path, "xdd~帥///b/c");
+        assert_eq!(breadcrumbs[2].path, "/xdd~帥///b/c");
     }
 
     #[test]
