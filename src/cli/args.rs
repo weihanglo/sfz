@@ -50,7 +50,8 @@ impl Args {
         let follow_links = matches.is_present("follow-links");
         let render_index = matches.is_present("render-index");
         let log = !matches.is_present("no-log");
-        let path_prefix = matches.value_of("path-prefix")
+        let path_prefix = matches
+            .value_of("path-prefix")
             .map(|s| format!("/{}", s.trim_start_matches('/')));
 
         Ok(Args {
