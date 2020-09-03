@@ -72,9 +72,6 @@ jobs:
           *) tar czf '${{ steps.vars.outputs.PKG_NAME }}' * ;;
         esac;
         popd > /dev/null
-
-        # Clean up working directory
-        git clean -df
     - name: Publish to GitHub Release
       uses: softprops/action-gh-release@v1
       with:
@@ -82,6 +79,11 @@ jobs:
           ${{ steps.vars.outputs.ARCHIVE_DIR }}/${{ steps.vars.outputs.PKG_NAME }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Clean up working directory
+      shell: bash
+      run: |
+        # Clean up working directory
+        git clean -df
     - name: Publish to crates.io
       if: ${{ matrix.cratesio }}
       uses: actions-rs/cargo@v1
