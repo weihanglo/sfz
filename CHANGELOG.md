@@ -3,15 +3,30 @@
 This project adheres to [Semantic Versioning](http://semver.org/).  
 Every release, along with the migration instructions, is documented on this file and Github [Releases](https://github.com/weihanglo/sfz/releases) page.
 
-## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.2.0...HEAD)
+## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.2.1...HEAD)
+
+## [v0.2.1] - 2020-09-04
+
+### [Changes][v0.2.1-changes]
+
+- **Breaking**: Default adress from 0.0.0.0 to 127.0.0.1
+- Bugfix: Fixed missing prefix slash for path-prefix ([#48][])
+- Internal: Refactored `cli` module ([#47][])
+- Internal: Splited `send::send_dir` function
+- Internal: Added lots of unit tests
+
+[v0.2.1]: https://github.com/weihanglo/sfz/releases/tag/v0.2.1
+[v0.2.1-changes]: https://github.com/weihanglo/sfz/compare/v0.2.0...v0.2.1
+[#47]: https://github.com/weihanglo/sfz/pull/47
+[#48]: https://github.com/weihanglo/sfz/pull/48
 
 ## [v0.2.0] - 2020-08-31
 
 ### [Changes][v0.2.0-changes]
 
-- Renamed `PathExt::is_hidden` to `PathExt::is_relatively_hidden` and now would check if any parent path component is prefixed with a dot. ([#46][])
-- Switch CI provider to GitHub Action
-- Upgrade lots of dependencies ([#41][]), including significant refactor on hyper 0.11 to 0.13 ([#42][])
+- Internal: Renamed `PathExt::is_hidden` to `PathExt::is_relatively_hidden` and now would check if any parent path component is prefixed with a dot. ([#46][])
+- Internal: Switched CI provider to GitHub Action
+- Internal: Upgraded lots of dependencies ([#41][]), including significant refactor on hyper 0.11 to 0.13 ([#42][])
 
 [v0.2.0]: https://github.com/weihanglo/sfz/releases/tag/v0.2.0
 [v0.2.0-changes]: https://github.com/weihanglo/sfz/compare/v0.1.2...v0.2.0
