@@ -51,6 +51,7 @@ pub enum PathType {
 /// Run the server.
 pub async fn serve(args: Args) -> BoxResult<()> {
     let address = args.address()?;
+    let path_prefix = args.path_prefix.clone().unwrap_or_default();
     let inner = Arc::new(InnerService::new(args));
     let make_svc = make_service_fn(move |_| {
         let inner = inner.clone();
@@ -64,7 +65,7 @@ pub async fn serve(args: Args) -> BoxResult<()> {
 
     let server = hyper::Server::try_bind(&address)?.serve(make_svc);
     let address = server.local_addr();
-    println!("Files served on http://{}", address);
+    println!("Files served on http://{}{}", address, path_prefix);
     server.await?;
 
     Ok(())
