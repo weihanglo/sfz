@@ -86,17 +86,13 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     } else {
         // CWD == sub dir of base dir
         // Append an item for popping back to parent directory.
+
         let path = format!(
             "{}/{}",
             prefix,
-            dir_path
-                .parent()
-                .unwrap()
-                .strip_prefix(base_path)
-                .unwrap()
-                .to_str()
-                .unwrap()
+            dir_path.parent().unwrap().strip_prefix(base_path).unwrap().to_str().unwrap()
         );
+
         vec![Item {
             name: "..".to_owned(),
             path,
@@ -109,7 +105,9 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     // Sort files (dir-first and lexicographic ordering).
     files.sort_unstable();
 
-    Ok(render(dir_path.filename_str(), &files, &breadcrumbs).into())
+    let dir_path_str = dir_path.strip_prefix(base_path).unwrap().to_str().unwrap();
+
+    Ok(render(dir_path_str,dir_path.filename_str(), &files, &breadcrumbs).into())
 }
 
 /// Send a buffer of file to client.
@@ -118,6 +116,12 @@ pub fn send_file<P: AsRef<Path>>(file_path: P) -> io::Result<Vec<u8>> {
     let f = File::open(file_path)?;
     let mut buffer = Vec::new();
     BufReader::new(f).read_to_end(&mut buffer)?;
+    Ok(buffer)
+}
+
+pub fn send_dir_as_zip<P1: AsRef<Path>, P2: AsRef<Path>>(base_path: P1, dir_path: P2)-> io::Result<Vec<u8>> {
+    let mut buffer = Vec::new();
+
     Ok(buffer)
 }
 
@@ -177,9 +181,10 @@ fn create_breadcrumbs<'a>(
 }
 
 /// Render page with Tera template engine.
-fn render(dir_name: &str, files: &[Item], breadcrumbs: &[Breadcrumb]) -> String {
+fn render(path: &str, dir_name: &str, files: &[Item], breadcrumbs: &[Breadcrumb]) -> String {
     let mut ctx = Context::new();
     ctx.insert("dir_name", dir_name);
+    ctx.insert("path", path);
     ctx.insert("files", files);
     ctx.insert("breadcrumbs", breadcrumbs);
     ctx.insert("style", include_str!("style.css"));
@@ -193,7 +198,7 @@ mod t {
 
     #[test]
     fn render_successfully() {
-        let page = render("", &vec![], &vec![]);
+        let page = render("","", &vec![], &vec![]);
         assert!(page.starts_with("<!DOCTYPE html>"))
     }
     #[test]

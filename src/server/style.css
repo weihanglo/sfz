@@ -47,10 +47,14 @@ li div {
   width: 1.5em;
 }
 
-li svg {
+li svg, .breadcrumbs svg {
   height: 100%;
   fill: rgba(3,47,98,0.5);
   padding-right: 0.5em;
+}
+
+.breadcrumbs svg {
+  padding-left: 0.5em;
 }
 
 li a {

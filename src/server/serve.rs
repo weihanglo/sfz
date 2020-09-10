@@ -23,6 +23,7 @@ use hyper::StatusCode;
 use ignore::gitignore::Gitignore;
 use mime_guess::mime;
 use percent_encoding::percent_decode;
+use qstring::QString;
 use serde::Serialize;
 
 use crate::cli::Args;
@@ -30,7 +31,7 @@ use crate::extensions::{MimeExt, PathExt, SystemTimeExt};
 use crate::http::conditional_requests::{is_fresh, is_precondition_failed};
 use crate::http::content_encoding::{compress, get_prior_encoding};
 use crate::http::range_requests::{is_range_fresh, is_satisfiable_range};
-use crate::server::send::{send_dir, send_file, send_file_with_range};
+use crate::server::send::{send_dir, send_file, send_file_with_range, send_dir_as_zip};
 use crate::server::{res, Request, Response};
 use crate::BoxResult;
 
@@ -69,6 +70,12 @@ pub async fn serve(args: Args) -> BoxResult<()> {
     server.await?;
 
     Ok(())
+}
+
+enum Action {
+    DownloadZip,
+    ListDir,
+    DownloadFile,
 }
 
 struct InnerService {
@@ -239,6 +246,33 @@ impl InnerService {
             None => return Ok(res::not_found(res)),
         };
 
+        let action = match req.uri().query() {
+            Some(query) => {
+                let query = QString::from(query);
+
+                match query.get("action") {
+                    Some(action_str) => match action_str {
+                        "zip" => Action::DownloadZip,
+                        _ => unimplemented!(),
+                    },
+                    None => {
+                        if path.is_dir() {
+                            Action::ListDir
+                        } else {
+                            Action::DownloadFile
+                        }
+                    }
+                }
+            }
+            None => {
+                if path.is_dir() {
+                    Action::ListDir
+                } else {
+                    Action::DownloadFile
+                }
+            }
+        };
+
         // CORS headers
         self.enable_cors(&mut res);
 
@@ -258,64 +292,71 @@ impl InnerService {
         let mut body: io::Result<Vec<u8>> = Ok(Vec::new());
 
         // Extra process for serving files.
-        if path.is_dir() {
-            body = send_dir(
-                &path,
-                &self.args.path,
-                self.args.all,
-                self.args.ignore,
-                self.args.path_prefix.as_deref(),
-            );
-        } else {
-            // Cache-Control.
-            self.enable_cache_control(&mut res);
-
-            // Last-Modified-Time from file metadata _mtime_.
-            let (mtime, size) = (path.mtime(), path.size());
-            let last_modified = LastModified::from(mtime);
-            // Concatenate _modified time_ and _file size_ to
-            // form a (nearly) strong validator.
-            let etag = format!(r#""{}-{}""#, mtime.timestamp(), size)
-                .parse::<ETag>()
-                .unwrap();
-
-            // Validate preconditions of conditional requests.
-            if is_precondition_failed(&req, &etag, mtime) {
-                return Ok(res::precondition_failed(res));
+        match action {
+            Action::ListDir => {
+                body = send_dir(
+                    &path,
+                    &self.args.path,
+                    self.args.all,
+                    self.args.ignore,
+                    self.args.path_prefix.as_deref(),
+                );
             }
+            Action::DownloadFile => {
+                // Cache-Control.
+                self.enable_cache_control(&mut res);
 
-            // Validate cache freshness.
-            if is_fresh(&req, &etag, mtime) {
+                // Last-Modified-Time from file metadata _mtime_.
+                let (mtime, size) = (path.mtime(), path.size());
+                let last_modified = LastModified::from(mtime);
+                // Concatenate _modified time_ and _file size_ to
+                // form a (nearly) strong validator.
+                let etag = format!(r#""{}-{}""#, mtime.timestamp(), size)
+                    .parse::<ETag>()
+                    .unwrap();
+
+                // Validate preconditions of conditional requests.
+                if is_precondition_failed(&req, &etag, mtime) {
+                    return Ok(res::precondition_failed(res));
+                }
+
+                // Validate cache freshness.
+                if is_fresh(&req, &etag, mtime) {
+                    res.headers_mut().typed_insert(last_modified);
+                    res.headers_mut().typed_insert(etag);
+                    return Ok(res::not_modified(res));
+                }
+
+                // Range Request support.
+                if let Some(range) = req.headers().typed_get::<Range>() {
+                    match (
+                        is_range_fresh(&req, &etag, &last_modified),
+                        is_satisfiable_range(&range, size as u64),
+                    ) {
+                        (true, Some(content_range)) => {
+                            // 206 Partial Content.
+                            if let Some(range) = content_range.bytes_range() {
+                                body = send_file_with_range(&path, range);
+                            }
+                            res.headers_mut().typed_insert(content_range);
+                            *res.status_mut() = StatusCode::PARTIAL_CONTENT;
+                        }
+                        // Respond entire entity if Range header contains
+                        // unsatisfiable range.
+                        _ => (),
+                    }
+                }
+
+                if res.status() != StatusCode::PARTIAL_CONTENT {
+                    body = send_file(&path);
+                }
                 res.headers_mut().typed_insert(last_modified);
                 res.headers_mut().typed_insert(etag);
-                return Ok(res::not_modified(res));
             }
-
-            // Range Request support.
-            if let Some(range) = req.headers().typed_get::<Range>() {
-                match (
-                    is_range_fresh(&req, &etag, &last_modified),
-                    is_satisfiable_range(&range, size as u64),
-                ) {
-                    (true, Some(content_range)) => {
-                        // 206 Partial Content.
-                        if let Some(range) = content_range.bytes_range() {
-                            body = send_file_with_range(&path, range);
-                        }
-                        res.headers_mut().typed_insert(content_range);
-                        *res.status_mut() = StatusCode::PARTIAL_CONTENT;
-                    }
-                    // Respond entire entity if Range header contains
-                    // unsatisfiable range.
-                    _ => (),
-                }
+            Action::DownloadZip=>{
+               res.headers_mut().typed_insert(ContentType::octet_stream());
+               body = send_dir_as_zip(&self.args.path,&path);
             }
-
-            if res.status() != StatusCode::PARTIAL_CONTENT {
-                body = send_file(&path);
-            }
-            res.headers_mut().typed_insert(last_modified);
-            res.headers_mut().typed_insert(etag);
         }
 
         let mut body = body?;
