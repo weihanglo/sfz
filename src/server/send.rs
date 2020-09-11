@@ -8,7 +8,7 @@
 
 use std::convert::AsRef;
 use std::fs::File;
-use std::io::{self, BufReader};
+use std::io::{self, BufReader, Read, Write, Seek, SeekFrom};
 use std::path::Path;
 
 use ignore::WalkBuilder;
@@ -91,7 +91,13 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
         let path = format!(
             "{}/{}",
             prefix,
-            dir_path.parent().unwrap().strip_prefix(base_path).unwrap().to_str().unwrap()
+            dir_path
+                .parent()
+                .unwrap()
+                .strip_prefix(base_path)
+                .unwrap()
+                .to_str()
+                .unwrap()
         );
 
         vec![Item {
@@ -108,7 +114,7 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     let dir_path_str = dir_path.strip_prefix(base_path).unwrap().to_str().unwrap();
 
-    Ok(render(dir_path_str,dir_path.filename_str(), &files, &breadcrumbs).into())
+    Ok(render(dir_path_str, dir_path.filename_str(), &files, &breadcrumbs).into())
 }
 
 /// Send a buffer of file to client.
@@ -121,43 +127,64 @@ pub fn send_file<P: AsRef<Path>>(file_path: P) -> io::Result<Vec<u8>> {
     Ok(buffer)
 }
 
-pub fn send_dir_as_zip<P1: AsRef<Path>, P2: AsRef<Path>>(dir_path: P1,
-    base_path: P2,
+/// Sending a directory as zip buffer
+pub fn send_dir_as_zip<P: AsRef<Path>>(
+    dir_path: P,
     show_all: bool,
-    with_ignore: bool)-> io::Result<Vec<u8>> {
-    let base_path = base_path.as_ref();
+    with_ignore: bool,
+) -> io::Result<Vec<u8>> {
     let dir_path = dir_path.as_ref();
 
-    let mut buffer = Vec::new();
+    // Creating a memory buffer to make zip file
+    let mut zip_buffer = Vec::new();
+    let cursor = std::io::Cursor::new(&mut zip_buffer);
 
-    let writer = ZipWriter::new(std::io::Cursor::new(&mut buffer[..]));
+    let mut zip_writer = ZipWriter::new(cursor);
+    let zip_options = zip::write::FileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored)
+        .unix_permissions(0o755);
 
-    let files_iter: Vec<&&Path> = WalkBuilder::new(dir_path)
+    // Recursively finding files and directories
+    let files_iter: Vec<ignore::DirEntry> = WalkBuilder::new(dir_path)
         .standard_filters(false) // Disable all standard filters.
         .git_ignore(with_ignore)
-        .sort_by_file_path(|path1, path2|{
-            let path1_str = String::from(path1.to_str().unwrap());
-            let path2_str = String::from(path2.to_str().unwrap());
-            path1_str.partial_cmp(&path2_str).unwrap()
-        })
         .hidden(!show_all) // Filter out hidden entries on demand.
         .build()
         .filter_map(|entry| entry.ok())
-        .filter(|entry| dir_path != entry.path() || !entry.path().is_dir())
-        .map(|entry| {
-            let path = entry.path();
-
-            &path
-        })
+        .filter(|entry| entry.path() != dir_path)
         .collect();
 
-    for path in files_iter.iter() {
-        println!("Path: {:#?}", path); 
+    let mut file_buffer = Vec::new();
+    for dir_entry in files_iter.iter() {
+        let file_path = dir_entry.path();
+        let name = file_path.strip_prefix(dir_path).unwrap().to_str().unwrap();
+
+        if file_path.is_dir() {
+            zip_writer
+                .add_directory(name, zip_options)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        } else {
+            zip_writer
+                .start_file(name, zip_options)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            let mut file = File::open(file_path)?;
+
+            file.read_to_end(&mut file_buffer)?;
+            zip_writer.write_all(&*file_buffer)?;
+            file_buffer.clear();
+        }
     }
 
-    
+    let mut zip = zip_writer
+        .finish()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
-    Ok(vec!())
+    zip.seek(SeekFrom::Start(0))?;
+    let mut buffer = Vec::new();
+
+    zip.read_to_end(&mut buffer)?;
+
+    Ok(buffer)
 }
 
 /// Send a buffer with specific range.
@@ -171,7 +198,6 @@ pub fn send_file_with_range<P: AsRef<Path>>(
     range: (u64, u64),
 ) -> io::Result<Vec<u8>> {
     use std::io::prelude::*;
-    use std::io::SeekFrom;
     let (start, end) = range; // TODO: should return HTTP 416
     if end < start {
         return Err(io::Error::from(io::ErrorKind::InvalidInput));
@@ -233,7 +259,7 @@ mod t {
 
     #[test]
     fn render_successfully() {
-        let page = render("","", &vec![], &vec![]);
+        let page = render("", "", &vec![], &vec![]);
         assert!(page.starts_with("<!DOCTYPE html>"))
     }
     #[test]

@@ -15,9 +15,12 @@ use std::time::Duration;
 
 use chrono::Local;
 use headers::{
-    AcceptRanges, AccessControlAllowHeaders, AccessControlAllowOrigin, CacheControl, ContentLength,
-    ContentType, ETag, HeaderMapExt, LastModified, Range, Server,
+    AcceptRanges, AccessControlAllowHeaders, AccessControlAllowOrigin, CacheControl,
+    ContentLength, ContentType, ETag, HeaderMapExt, LastModified, Range,
+    Server,
 };
+// Can not use headers::ContentDisposition. Because of https://github.com/hyperium/headers/issues/8
+use hyper::header::{CONTENT_DISPOSITION, HeaderValue};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::StatusCode;
 use ignore::gitignore::Gitignore;
@@ -31,7 +34,7 @@ use crate::extensions::{MimeExt, PathExt, SystemTimeExt};
 use crate::http::conditional_requests::{is_fresh, is_precondition_failed};
 use crate::http::content_encoding::{compress, get_prior_encoding};
 use crate::http::range_requests::{is_range_fresh, is_satisfiable_range};
-use crate::server::send::{send_dir, send_file, send_file_with_range, send_dir_as_zip};
+use crate::server::send::{send_dir, send_dir_as_zip, send_file, send_file_with_range};
 use crate::server::{res, Request, Response};
 use crate::BoxResult;
 
@@ -246,7 +249,11 @@ impl InnerService {
             None => return Ok(res::not_found(res)),
         };
 
-        let default_action = if path.is_dir() {Action::ListDir} else {Action::DownloadFile};
+        let default_action = if path.is_dir() {
+            Action::ListDir
+        } else {
+            Action::DownloadFile
+        };
 
         let action = match req.uri().query() {
             Some(query) => {
@@ -254,13 +261,19 @@ impl InnerService {
 
                 match query.get("action") {
                     Some(action_str) => match action_str {
-                        "zip" => Action::DownloadZip,
+                        "zip" => {
+                            if path.is_dir() {
+                                Action::DownloadZip
+                            } else {
+                                unimplemented!()
+                            }
+                        }
                         _ => unimplemented!(),
                     },
-                    None => default_action
+                    None => default_action,
                 }
             }
-            None => default_action
+            None => default_action,
         };
 
         // CORS headers
@@ -343,17 +356,27 @@ impl InnerService {
                 res.headers_mut().typed_insert(last_modified);
                 res.headers_mut().typed_insert(etag);
             }
-            Action::DownloadZip=>{
-               res.headers_mut().typed_insert(ContentType::octet_stream());
-               body = send_dir_as_zip(&path,
-                    &self.args.path,
-                    self.args.all,
-                    self.args.ignore);
+            Action::DownloadZip => {
+                body = send_dir_as_zip(&path, self.args.all, self.args.ignore);
+
+                // Changing the filename
+                res.headers_mut().insert(
+                    CONTENT_DISPOSITION,
+                    HeaderValue::from_str(&format!(
+                        "attachment; filename=\"{}.zip\"",
+                        path.components()
+                            .last()
+                            .unwrap()
+                            .as_os_str()
+                            .to_str()
+                            .unwrap()
+                    )).unwrap(),
+                );
             }
         }
 
         let mut body = body?;
-        let mime_type = InnerService::guess_path_mime(&path);
+        let mime_type = InnerService::guess_path_mime(&path, action);
 
         if self.can_compress(res.status(), &mime_type) {
             let encoding = res
@@ -386,14 +409,12 @@ impl InnerService {
         Ok(res)
     }
 
-    fn guess_path_mime<P: AsRef<Path>>(path: P) -> mime::Mime {
+    fn guess_path_mime<P: AsRef<Path>>(path: P, action: Action) -> mime::Mime {
         let path = path.as_ref();
-        path.mime().unwrap_or_else(|| {
-            if path.is_dir() {
-                mime::TEXT_HTML_UTF_8
-            } else {
-                mime::TEXT_PLAIN_UTF_8
-            }
+        path.mime().unwrap_or_else(|| match action {
+            Action::ListDir => mime::TEXT_HTML_UTF_8,
+            Action::DownloadFile => mime::TEXT_PLAIN_UTF_8,
+            Action::DownloadZip => mime::APPLICATION_OCTET_STREAM,
         })
     }
 }
@@ -442,11 +463,12 @@ mod t_server {
 
     #[test]
     fn guess_path_mime() {
-        let mime_type = InnerService::guess_path_mime("file-wthout-extension");
+        let mime_type =
+            InnerService::guess_path_mime("file-wthout-extension", Action::DownloadFile);
         assert_eq!(mime_type, mime::TEXT_PLAIN_UTF_8);
 
         let dir_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let mime_type = InnerService::guess_path_mime(dir_path);
+        let mime_type = InnerService::guess_path_mime(dir_path, Action::ListDir);
         assert_eq!(mime_type, mime::TEXT_HTML_UTF_8);
     }
 
