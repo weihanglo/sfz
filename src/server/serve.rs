@@ -246,6 +246,8 @@ impl InnerService {
             None => return Ok(res::not_found(res)),
         };
 
+        let default_action = if path.is_dir() {Action::ListDir} else {Action::DownloadFile};
+
         let action = match req.uri().query() {
             Some(query) => {
                 let query = QString::from(query);
@@ -255,22 +257,10 @@ impl InnerService {
                         "zip" => Action::DownloadZip,
                         _ => unimplemented!(),
                     },
-                    None => {
-                        if path.is_dir() {
-                            Action::ListDir
-                        } else {
-                            Action::DownloadFile
-                        }
-                    }
+                    None => default_action
                 }
             }
-            None => {
-                if path.is_dir() {
-                    Action::ListDir
-                } else {
-                    Action::DownloadFile
-                }
-            }
+            None => default_action
         };
 
         // CORS headers
@@ -355,7 +345,10 @@ impl InnerService {
             }
             Action::DownloadZip=>{
                res.headers_mut().typed_insert(ContentType::octet_stream());
-               body = send_dir_as_zip(&self.args.path,&path);
+               body = send_dir_as_zip(&path,
+                    &self.args.path,
+                    self.args.all,
+                    self.args.ignore);
             }
         }
 

@@ -14,6 +14,7 @@ use std::path::Path;
 use ignore::WalkBuilder;
 use serde::Serialize;
 use tera::{Context, Tera};
+use zip::ZipWriter;
 
 use crate::extensions::PathExt;
 use crate::server::PathType;
@@ -116,13 +117,47 @@ pub fn send_file<P: AsRef<Path>>(file_path: P) -> io::Result<Vec<u8>> {
     let f = File::open(file_path)?;
     let mut buffer = Vec::new();
     BufReader::new(f).read_to_end(&mut buffer)?;
+
     Ok(buffer)
 }
 
-pub fn send_dir_as_zip<P1: AsRef<Path>, P2: AsRef<Path>>(base_path: P1, dir_path: P2)-> io::Result<Vec<u8>> {
+pub fn send_dir_as_zip<P1: AsRef<Path>, P2: AsRef<Path>>(dir_path: P1,
+    base_path: P2,
+    show_all: bool,
+    with_ignore: bool)-> io::Result<Vec<u8>> {
+    let base_path = base_path.as_ref();
+    let dir_path = dir_path.as_ref();
+
     let mut buffer = Vec::new();
 
-    Ok(buffer)
+    let writer = ZipWriter::new(std::io::Cursor::new(&mut buffer[..]));
+
+    let files_iter: Vec<&&Path> = WalkBuilder::new(dir_path)
+        .standard_filters(false) // Disable all standard filters.
+        .git_ignore(with_ignore)
+        .sort_by_file_path(|path1, path2|{
+            let path1_str = String::from(path1.to_str().unwrap());
+            let path2_str = String::from(path2.to_str().unwrap());
+            path1_str.partial_cmp(&path2_str).unwrap()
+        })
+        .hidden(!show_all) // Filter out hidden entries on demand.
+        .build()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| dir_path != entry.path() || !entry.path().is_dir())
+        .map(|entry| {
+            let path = entry.path();
+
+            &path
+        })
+        .collect();
+
+    for path in files_iter.iter() {
+        println!("Path: {:#?}", path); 
+    }
+
+    
+
+    Ok(vec!())
 }
 
 /// Send a buffer with specific range.
