@@ -8,7 +8,7 @@
 
 use std::convert::AsRef;
 use std::fs::File;
-use std::io::{self, BufReader, Read, Write, Seek, SeekFrom};
+use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 use ignore::WalkBuilder;

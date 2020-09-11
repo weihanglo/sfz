@@ -15,12 +15,11 @@ use std::time::Duration;
 
 use chrono::Local;
 use headers::{
-    AcceptRanges, AccessControlAllowHeaders, AccessControlAllowOrigin, CacheControl,
-    ContentLength, ContentType, ETag, HeaderMapExt, LastModified, Range,
-    Server,
+    AcceptRanges, AccessControlAllowHeaders, AccessControlAllowOrigin, CacheControl, ContentLength,
+    ContentType, ETag, HeaderMapExt, LastModified, Range, Server,
 };
 // Can not use headers::ContentDisposition. Because of https://github.com/hyperium/headers/issues/8
-use hyper::header::{CONTENT_DISPOSITION, HeaderValue};
+use hyper::header::{HeaderValue, CONTENT_DISPOSITION};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::StatusCode;
 use ignore::gitignore::Gitignore;
@@ -370,7 +369,8 @@ impl InnerService {
                             .as_os_str()
                             .to_str()
                             .unwrap()
-                    )).unwrap(),
+                    ))
+                    .unwrap(),
                 );
             }
         }
