@@ -8,7 +8,7 @@
 
 use std::convert::AsRef;
 use std::fs::File;
-use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
+use std::io::{self, BufReader, Read, Seek ,SeekFrom};
 use std::path::Path;
 
 use ignore::WalkBuilder;
@@ -33,6 +33,21 @@ struct Item {
 struct Breadcrumb<'a> {
     name: &'a str,
     path: String,
+}
+
+/// Walking inside a directory recursively
+fn get_dir_contents<P: AsRef<Path>>(
+    dir_path: P,
+    with_ignore: bool,
+    show_all: bool,
+    depth: Option<usize>,
+) -> ignore::Walk  {
+    WalkBuilder::new(dir_path)
+        .standard_filters(false) // Disable all standard filters.
+        .git_ignore(with_ignore)
+        .hidden(!show_all) // Filter out hidden entries on demand.
+        .max_depth(depth) // Do not traverse subpaths.
+        .build()
 }
 
 /// Send a HTML page of all files under the path.
@@ -60,12 +75,7 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     let breadcrumbs = create_breadcrumbs(dir_path, base_path, prefix);
 
     // Collect filename and there links.
-    let files_iter = WalkBuilder::new(dir_path)
-        .standard_filters(false) // Disable all standard filters.
-        .git_ignore(with_ignore)
-        .hidden(!show_all) // Filter out hidden entries on demand.
-        .max_depth(Some(1)) // Do not traverse subpaths.
-        .build()
+    let files_iter = get_dir_contents(dir_path, with_ignore, show_all, Some(1))
         .filter_map(|entry| entry.ok())
         .filter(|entry| dir_path != entry.path()) // Exclude `.`
         .map(|entry| {
@@ -112,9 +122,7 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     // Sort files (dir-first and lexicographic ordering).
     files.sort_unstable();
 
-    let dir_path_str = dir_path.strip_prefix(base_path).unwrap().to_str().unwrap();
-
-    Ok(render(dir_path_str, dir_path.filename_str(), &files, &breadcrumbs).into())
+    Ok(render(dir_path.filename_str(), &files, &breadcrumbs).into())
 }
 
 /// Send a buffer of file to client.
@@ -145,17 +153,11 @@ pub fn send_dir_as_zip<P: AsRef<Path>>(
         .unix_permissions(0o755);
 
     // Recursively finding files and directories
-    let files_iter: Vec<ignore::DirEntry> = WalkBuilder::new(dir_path)
-        .standard_filters(false) // Disable all standard filters.
-        .git_ignore(with_ignore)
-        .hidden(!show_all) // Filter out hidden entries on demand.
-        .build()
+    let files_iter = get_dir_contents(dir_path, with_ignore, show_all, None)
         .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.path() != dir_path)
-        .collect();
+        .filter(|entry| entry.path() != dir_path);
 
-    let mut file_buffer = Vec::new();
-    for dir_entry in files_iter.iter() {
+    for dir_entry in files_iter {
         let file_path = dir_entry.path();
         let name = file_path.strip_prefix(dir_path).unwrap().to_str().unwrap();
 
@@ -169,9 +171,7 @@ pub fn send_dir_as_zip<P: AsRef<Path>>(
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
             let mut file = File::open(file_path)?;
 
-            file.read_to_end(&mut file_buffer)?;
-            zip_writer.write_all(&*file_buffer)?;
-            file_buffer.clear();
+            std::io::copy(&mut file, &mut zip_writer)?;
         }
     }
 
@@ -180,11 +180,8 @@ pub fn send_dir_as_zip<P: AsRef<Path>>(
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
     zip.seek(SeekFrom::Start(0))?;
-    let mut buffer = Vec::new();
 
-    zip.read_to_end(&mut buffer)?;
-
-    Ok(buffer)
+    zip.bytes().collect()
 }
 
 /// Send a buffer with specific range.
@@ -242,10 +239,9 @@ fn create_breadcrumbs<'a>(
 }
 
 /// Render page with Tera template engine.
-fn render(path: &str, dir_name: &str, files: &[Item], breadcrumbs: &[Breadcrumb]) -> String {
+fn render(dir_name: &str, files: &[Item], breadcrumbs: &[Breadcrumb]) -> String {
     let mut ctx = Context::new();
     ctx.insert("dir_name", dir_name);
-    ctx.insert("path", path);
     ctx.insert("files", files);
     ctx.insert("breadcrumbs", breadcrumbs);
     ctx.insert("style", include_str!("style.css"));
@@ -259,7 +255,7 @@ mod t {
 
     #[test]
     fn render_successfully() {
-        let page = render("", "", &vec![], &vec![]);
+        let page = render("", &vec![], &vec![]);
         assert!(page.starts_with("<!DOCTYPE html>"))
     }
     #[test]
@@ -403,5 +399,10 @@ mod t_send {
         // TODO: HTTP code 416
         let buf = send_file_with_range(file_txt_path(), (1, 0));
         assert_eq!(buf.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn t_send_dir_as_zip(){
+        
     }
 }

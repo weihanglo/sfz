@@ -32,8 +32,8 @@ ignore = "0.4" # Respect to .gitignore while listing directories.
 # Logging
 chrono = "0.4"
 # Directory Download
-qstring = "0.7.2"
-zip = "0.5.7"
+qstring = "0.7"
+zip = { version = "0.5", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tempdir = "0.3"
