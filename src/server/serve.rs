@@ -74,6 +74,7 @@ pub async fn serve(args: Args) -> BoxResult<()> {
     Ok(())
 }
 
+/// File and folder actions
 enum Action {
     DownloadZip,
     ListDir,
@@ -264,10 +265,10 @@ impl InnerService {
                             if path.is_dir() {
                                 Action::DownloadZip
                             } else {
-                                unimplemented!()
+                                bail!("error: invalid action");
                             }
                         }
-                        _ => unimplemented!(),
+                        _ => bail!("error: invalid action"),
                     },
                     None => default_action,
                 }
@@ -363,12 +364,7 @@ impl InnerService {
                     CONTENT_DISPOSITION,
                     HeaderValue::from_str(&format!(
                         "attachment; filename=\"{}.zip\"",
-                        path.components()
-                            .last()
-                            .unwrap()
-                            .as_os_str()
-                            .to_str()
-                            .unwrap()
+                        path.file_name().unwrap().to_str().unwrap()
                     ))
                     .unwrap(),
                 );
@@ -470,6 +466,10 @@ mod t_server {
         let dir_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let mime_type = InnerService::guess_path_mime(dir_path, Action::ListDir);
         assert_eq!(mime_type, mime::TEXT_HTML_UTF_8);
+
+        let dir_path = PathBuf::from("./tests");
+        let mime_type = InnerService::guess_path_mime(dir_path, Action::DownloadZip);
+        assert_eq!(mime_type, mime::APPLICATION_OCTET_STREAM);
     }
 
     #[test]
