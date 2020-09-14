@@ -344,6 +344,12 @@ mod t_send {
         path
     }
 
+    fn dir_with_sub_dir_path() -> std::path::PathBuf {
+        let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("./tests/dir_with_sub_dirs/");
+        path
+    }
+
     fn missing_file_path() -> std::path::PathBuf {
         let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         path.push("./missing/file");
@@ -403,6 +409,15 @@ mod t_send {
 
     #[test]
     fn t_send_dir_as_zip(){
-        
+        let buf = send_dir_as_zip(dir_with_sub_dir_path(), true, false);
+
+        assert_eq!(buf.is_ok(), true);
+
+        let buf = buf.unwrap();
+
+        assert_eq!(buf.len()>0, true);
+
+        // https://users.cs.jmu.edu/buchhofp/forensics/formats/pkzip.html#localheader
+        assert_eq!(&buf[0..4], &[0x50,0x4b,0x03,0x04]);
     }
 }

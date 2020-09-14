@@ -466,6 +466,10 @@ mod t_server {
         let dir_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let mime_type = InnerService::guess_path_mime(dir_path, Action::ListDir);
         assert_eq!(mime_type, mime::TEXT_HTML_UTF_8);
+
+        let dir_path = PathBuf::from("./tests");
+        let mime_type = InnerService::guess_path_mime(dir_path, Action::DownloadZip);
+        assert_eq!(mime_type, mime::APPLICATION_OCTET_STREAM);
     }
 
     #[test]
