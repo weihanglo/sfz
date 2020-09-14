@@ -8,7 +8,7 @@
 
 use std::convert::AsRef;
 use std::fs::File;
-use std::io::{self, BufReader, Read, Seek ,SeekFrom};
+use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 
 use ignore::WalkBuilder;
@@ -41,7 +41,7 @@ fn get_dir_contents<P: AsRef<Path>>(
     with_ignore: bool,
     show_all: bool,
     depth: Option<usize>,
-) -> ignore::Walk  {
+) -> ignore::Walk {
     WalkBuilder::new(dir_path)
         .standard_filters(false) // Disable all standard filters.
         .git_ignore(with_ignore)
@@ -408,16 +408,16 @@ mod t_send {
     }
 
     #[test]
-    fn t_send_dir_as_zip(){
+    fn t_send_dir_as_zip() {
         let buf = send_dir_as_zip(dir_with_sub_dir_path(), true, false);
 
         assert_eq!(buf.is_ok(), true);
 
         let buf = buf.unwrap();
 
-        assert_eq!(buf.len()>0, true);
+        assert_eq!(buf.len() > 0, true);
 
         // https://users.cs.jmu.edu/buchhofp/forensics/formats/pkzip.html#localheader
-        assert_eq!(&buf[0..4], &[0x50,0x4b,0x03,0x04]);
+        assert_eq!(&buf[0..4], &[0x50, 0x4b, 0x03, 0x04]);
     }
 }
