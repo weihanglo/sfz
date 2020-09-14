@@ -8,12 +8,13 @@
 
 use std::convert::AsRef;
 use std::fs::File;
-use std::io::{self, BufReader};
+use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 
 use ignore::WalkBuilder;
 use serde::Serialize;
 use tera::{Context, Tera};
+use zip::ZipWriter;
 
 use crate::extensions::PathExt;
 use crate::server::PathType;
@@ -32,6 +33,21 @@ struct Item {
 struct Breadcrumb<'a> {
     name: &'a str,
     path: String,
+}
+
+/// Walking inside a directory recursively
+fn get_dir_contents<P: AsRef<Path>>(
+    dir_path: P,
+    with_ignore: bool,
+    show_all: bool,
+    depth: Option<usize>,
+) -> ignore::Walk {
+    WalkBuilder::new(dir_path)
+        .standard_filters(false) // Disable all standard filters.
+        .git_ignore(with_ignore)
+        .hidden(!show_all) // Filter out hidden entries on demand.
+        .max_depth(depth) // Do not traverse subpaths.
+        .build()
 }
 
 /// Send a HTML page of all files under the path.
@@ -59,12 +75,7 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     let breadcrumbs = create_breadcrumbs(dir_path, base_path, prefix);
 
     // Collect filename and there links.
-    let files_iter = WalkBuilder::new(dir_path)
-        .standard_filters(false) // Disable all standard filters.
-        .git_ignore(with_ignore)
-        .hidden(!show_all) // Filter out hidden entries on demand.
-        .max_depth(Some(1)) // Do not traverse subpaths.
-        .build()
+    let files_iter = get_dir_contents(dir_path, with_ignore, show_all, Some(1))
         .filter_map(|entry| entry.ok())
         .filter(|entry| dir_path != entry.path()) // Exclude `.`
         .map(|entry| {
@@ -86,6 +97,7 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     } else {
         // CWD == sub dir of base dir
         // Append an item for popping back to parent directory.
+
         let path = format!(
             "{}/{}",
             prefix,
@@ -97,6 +109,7 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
                 .to_str()
                 .unwrap()
         );
+
         vec![Item {
             name: "..".to_owned(),
             path,
@@ -118,7 +131,57 @@ pub fn send_file<P: AsRef<Path>>(file_path: P) -> io::Result<Vec<u8>> {
     let f = File::open(file_path)?;
     let mut buffer = Vec::new();
     BufReader::new(f).read_to_end(&mut buffer)?;
+
     Ok(buffer)
+}
+
+/// Sending a directory as zip buffer
+pub fn send_dir_as_zip<P: AsRef<Path>>(
+    dir_path: P,
+    show_all: bool,
+    with_ignore: bool,
+) -> io::Result<Vec<u8>> {
+    let dir_path = dir_path.as_ref();
+
+    // Creating a memory buffer to make zip file
+    let mut zip_buffer = Vec::new();
+    let cursor = std::io::Cursor::new(&mut zip_buffer);
+
+    let mut zip_writer = ZipWriter::new(cursor);
+    let zip_options = zip::write::FileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored)
+        .unix_permissions(0o755);
+
+    // Recursively finding files and directories
+    let files_iter = get_dir_contents(dir_path, with_ignore, show_all, None)
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.path() != dir_path);
+
+    for dir_entry in files_iter {
+        let file_path = dir_entry.path();
+        let name = file_path.strip_prefix(dir_path).unwrap().to_str().unwrap();
+
+        if file_path.is_dir() {
+            zip_writer
+                .add_directory(name, zip_options)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        } else {
+            zip_writer
+                .start_file(name, zip_options)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            let mut file = File::open(file_path)?;
+
+            std::io::copy(&mut file, &mut zip_writer)?;
+        }
+    }
+
+    let mut zip = zip_writer
+        .finish()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    zip.seek(SeekFrom::Start(0))?;
+
+    zip.bytes().collect()
 }
 
 /// Send a buffer with specific range.
@@ -132,7 +195,6 @@ pub fn send_file_with_range<P: AsRef<Path>>(
     range: (u64, u64),
 ) -> io::Result<Vec<u8>> {
     use std::io::prelude::*;
-    use std::io::SeekFrom;
     let (start, end) = range; // TODO: should return HTTP 416
     if end < start {
         return Err(io::Error::from(io::ErrorKind::InvalidInput));
@@ -282,6 +344,12 @@ mod t_send {
         path
     }
 
+    fn dir_with_sub_dir_path() -> std::path::PathBuf {
+        let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("./tests/dir_with_sub_dirs/");
+        path
+    }
+
     fn missing_file_path() -> std::path::PathBuf {
         let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         path.push("./missing/file");
@@ -337,5 +405,19 @@ mod t_send {
         // TODO: HTTP code 416
         let buf = send_file_with_range(file_txt_path(), (1, 0));
         assert_eq!(buf.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn t_send_dir_as_zip() {
+        let buf = send_dir_as_zip(dir_with_sub_dir_path(), true, false);
+
+        assert_eq!(buf.is_ok(), true);
+
+        let buf = buf.unwrap();
+
+        assert_eq!(buf.len() > 0, true);
+
+        // https://users.cs.jmu.edu/buchhofp/forensics/formats/pkzip.html#localheader
+        assert_eq!(&buf[0..4], &[0x50, 0x4b, 0x03, 0x04]);
     }
 }
