@@ -3,11 +3,22 @@
 This project adheres to [Semantic Versioning](http://semver.org/).  
 Every release, along with the migration instructions, is documented on this file and Github [Releases](https://github.com/weihanglo/sfz/releases) page.
 
-## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.2.1...HEAD)
+## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.3.0...HEAD)
+
+## [v0.3.0] - 2020-10-24
+
+[Changes][v0.3.0-changes]
+
+- New feature: Download directory as zip ([#50][], kudos to [@whizsid][]!)
+
+[@whizsid]: https://github.com/whizsid
+[v0.3.0]: https://github.com/weihanglo/sfz/releases/tag/v0.3.0
+[v0.3.0-changes]: https://github.com/weihanglo/sfz/compare/v0.2.1...v0.3.0
+[#50]: https://github.com/weihanglo/sfz/pull/50
 
 ## [v0.2.1] - 2020-09-04
 
-### [Changes][v0.2.1-changes]
+[Changes][v0.2.1-changes]
 
 - **Breaking**: Default adress from 0.0.0.0 to 127.0.0.1
 - Bugfix: Fixed missing prefix slash for path-prefix ([#48][])
@@ -22,7 +33,7 @@ Every release, along with the migration instructions, is documented on this file
 
 ## [v0.2.0] - 2020-08-31
 
-### [Changes][v0.2.0-changes]
+[Changes][v0.2.0-changes]
 
 - Internal: Renamed `PathExt::is_hidden` to `PathExt::is_relatively_hidden` and now would check if any parent path component is prefixed with a dot. ([#46][])
 - Internal: Switched CI provider to GitHub Action
@@ -36,7 +47,7 @@ Every release, along with the migration instructions, is documented on this file
 
 ## [v0.1.2] - 2020-08-28
 
-### [Changes][v0.1.2-changes]
+[Changes][v0.1.2-changes]
 
 - Fixed range header off-by-one error ([#39](https://github.com/weihanglo/sfz/issues/39))
 
@@ -45,7 +56,7 @@ Every release, along with the migration instructions, is documented on this file
 
 ## [0.1.1] - 2020-06-04
 
-### [Changes][0.1.1-changes]
+[Changes][0.1.1-changes]
 
 - Fixed duplicated prefix slash regression issue ([#31](https://github.com/weihanglo/sfz/issues/31))
 
@@ -54,7 +65,7 @@ Every release, along with the migration instructions, is documented on this file
 
 ## [0.1.0] - 2020-05-01
 
-### [Changes][0.1.0-changes]
+[Changes][0.1.0-changes]
 
 - Added new flag `--path-prefix` to customize path prefix when serving content (credit to [@jxs](https://github.com/jxs))
 
@@ -63,7 +74,7 @@ Every release, along with the migration instructions, is documented on this file
 
 ## [0.0.4] - 2019-09-07
 
-### [Changes][0.0.4-changes]
+[Changes][0.0.4-changes]
 
 - Added new feature: logs request/response by default.
 - Added new option flag `--no-log` to disable request/response logging.
@@ -78,7 +89,7 @@ Every release, along with the migration instructions, is documented on this file
 
 ## [0.0.3] - 2018-03-07
 
-### [Changes][0.0.3-changes]
+[Changes][0.0.3-changes]
 
 - Handled error with some human-readable format.
 - Added new command arg `--render--index` to automatically render index file such as `index.html`.
@@ -91,7 +102,7 @@ Every release, along with the migration instructions, is documented on this file
 
 First release version on [Crates.io][crate-sfz]!
 
-### [Changes][0.0.2-changes]
+[Changes][0.0.2-changes]
 
 - Hombrew formula for sfz! You can now donwload sfz via homebrew from GitHub.
 - Fixed missing `ETag` and `Last-Modified` header fields.
