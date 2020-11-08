@@ -112,7 +112,7 @@ mod t {
     use crate::matches;
     use crate::test_utils::with_current_dir;
     use std::fs::File;
-    use tempdir::TempDir;
+    use tempfile::Builder;
 
     impl Default for Args {
         /// Just for convenience. We do not need a default at this time.
@@ -173,7 +173,7 @@ mod t {
 
     #[test]
     fn parse_absolute_path() {
-        let tmp_dir = TempDir::new(temp_name()).unwrap();
+        let tmp_dir = Builder::new().prefix(temp_name()).tempdir().unwrap();
         let path = tmp_dir.path().join("temp.txt");
         assert!(path.is_absolute());
         // error: No exists
@@ -188,7 +188,7 @@ mod t {
 
     #[test]
     fn parse_relative_path() {
-        let tmp_dir = TempDir::new(temp_name()).unwrap();
+        let tmp_dir = Builder::new().prefix(temp_name()).tempdir().unwrap();
         with_current_dir(tmp_dir.path(), || {
             let relative_path: &Path = "temp.txt".as_ref();
             File::create(relative_path).unwrap();

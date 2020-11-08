@@ -420,7 +420,7 @@ mod t_server {
     use super::*;
     use crate::test_utils::{get_tests_dir, with_current_dir};
     use std::fs::File;
-    use tempdir::TempDir;
+    use tempfile::Builder;
 
     fn bootstrap(args: Args) -> (InnerService, Response) {
         (InnerService::new(args), Response::default())
@@ -445,7 +445,7 @@ mod t_server {
         );
 
         // Return index.html if `--render-index` flag is on.
-        let dir = TempDir::new(temp_name()).unwrap();
+        let dir = Builder::new().prefix(temp_name()).tempdir().unwrap();
         let args = Args {
             path: dir.path().to_owned(),
             ..Default::default()
@@ -675,7 +675,7 @@ mod t_server {
         #[cfg(windows)]
         use std::os::windows::fs::symlink_file;
 
-        let src_dir = TempDir::new(temp_name()).unwrap();
+        let src_dir = Builder::new().prefix(temp_name()).tempdir().unwrap();
         let src_dir = src_dir.path().canonicalize().unwrap();
         let src_path = src_dir.join("src_file.txt");
         let _ = File::create(&src_path);
