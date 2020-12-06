@@ -87,7 +87,11 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
             Item {
                 path_type: abs_path.type_(),
                 name: rel_path.filename_str().to_owned(),
-                path: format!("{}/{}", prefix, rel_path_ref),
+                path: format!("{}/{}", prefix, if cfg!(windows){
+                    rel_path_ref.replace("\\", "/")
+                } else {
+                    rel_path_ref.to_string()
+                }),
             }
         });
 
