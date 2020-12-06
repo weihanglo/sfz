@@ -116,17 +116,21 @@ impl InnerService {
     /// 1. Remove leading slash.
     /// 2. Strip path prefix if defined
     /// 3. URI percent decode.
-    /// 4. Concatenate base path and requested path.
+    /// 4. If on windows, switch slashes
+    /// 5. Concatenate base path and requested path.
     fn file_path_from_path(&self, path: &str) -> Result<Option<PathBuf>, Utf8Error> {
         let decoded = percent_decode(path[1..].as_bytes())
             .decode_utf8()?
             .into_owned();
-
-        let stripped_path = match self.strip_path_prefix(&decoded) {
+        let slashes_switched = if cfg!(windows){
+            decoded.replace("/", "\\")
+        } else {
+            decoded
+        };
+        let stripped_path = match self.strip_path_prefix(&slashes_switched) {
             Some(path) => path,
             None => return Ok(None),
         };
-
         let mut path = self.args.path.join(stripped_path);
         if self.args.render_index && path.is_dir() {
             path.push("index.html")
