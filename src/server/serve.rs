@@ -120,12 +120,11 @@ impl InnerService {
     /// 5. Concatenate base path and requested path.
     fn file_path_from_path(&self, path: &str) -> Result<Option<PathBuf>, Utf8Error> {
         let decoded = percent_decode(path[1..].as_bytes())
-            .decode_utf8()?
-            .into_owned();
+            .decode_utf8()?;
         let slashes_switched = if cfg!(windows) {
             decoded.replace("/", "\\")
         } else {
-            decoded
+            decoded.into_owned()
         };
         let stripped_path = match self.strip_path_prefix(&slashes_switched) {
             Some(path) => path,
