@@ -122,7 +122,7 @@ impl InnerService {
         let decoded = percent_decode(path[1..].as_bytes())
             .decode_utf8()?
             .into_owned();
-        let slashes_switched = if cfg!(windows){
+        let slashes_switched = if cfg!(windows) {
             decoded.replace("/", "\\")
         } else {
             decoded
