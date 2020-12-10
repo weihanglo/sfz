@@ -4,6 +4,7 @@
 [![Build Status](https://github.com/weihanglo/sfz/workflows/CI/badge.svg)](https://github.com/weihanglo/sfz/actions?query=workflow%3ACI)
 [![Code Coverage](https://codecov.io/gh/weihanglo/sfz/coverage.svg)](https://codecov.io/gh/weihanglo/sfz)
 [![Lines of Code](https://tokei.rs/b1/github/weihanglo/sfz?category=code)][sfz]
+[![Dependency Status](https://deps.rs/repo/github/weihanglo/sfz/status.svg)](https://deps.rs/repo/github/weihanglo/sfz)
 
 sfz, or **S**tatic **F**ile **Z**erver, is a simple command-line tool serving static files for you.
 
