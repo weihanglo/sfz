@@ -17,8 +17,8 @@ edition = "2018"
 # Command-line
 clap = { version = "2.33", default-features = false }
 # Server
-tokio = { version = "0.2", features = ["rt-core", "macros"] }
-hyper = "0.13"
+tokio = { version = "1", features = ["rt", "macros"] }
+hyper = { version = "0.14", features = ["http1", "server", "tcp"] }
 headers = "0.3"
 mime_guess = "2.0"
 percent-encoding = "2.1"
