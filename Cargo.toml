@@ -18,7 +18,7 @@ edition = "2018"
 clap = { version = "2.33", default-features = false }
 # Server
 tokio = { version = "1", features = ["rt", "macros"] }
-hyper = { version = "0.14", features = ["http1", "server", "tcp"] }
+hyper = { version = "0.14.4", features = ["http1", "server", "tcp"] }
 headers = "0.3"
 mime_guess = "2.0"
 percent-encoding = "2.1"
