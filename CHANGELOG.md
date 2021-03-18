@@ -3,7 +3,19 @@
 This project adheres to [Semantic Versioning](http://semver.org/).  
 Every release, along with the migration instructions, is documented on this file and Github [Releases](https://github.com/weihanglo/sfz/releases) page.
 
-## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.3.0...HEAD)
+## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.4.0...HEAD)
+
+## [v0.4.0] - 2021-03-17
+
+[Changes][v0.4.0-changes]
+
+- Bugfix: Handle paths on Windows properly ([#53][], kudos to [@lunar-mycroft][]!)
+- Internal: Upgraded to Tokio v1 and Hyper v0.14
+
+[@lunar-mycroft]: https://github.com/lunar-mycroft
+[v0.4.0]: https://github.com/weihanglo/sfz/releases/tag/v0.4.0
+[v0.4.0-changes]: https://github.com/weihanglo/sfz/compare/v0.3.0...v0.4.0
+[#53]: https://github.com/weihanglo/sfz/pull/53
 
 ## [v0.3.0] - 2020-10-24
 
