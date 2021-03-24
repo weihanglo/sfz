@@ -143,8 +143,6 @@ mod t_extensions {
 
     #[test]
     fn path_is_not_relatively_hidden() {
-        assert!(!file_txt_path().is_relatively_hidden());
-
         let path = "./visible/visible.html";
         assert!(!PathBuf::from(path).is_relatively_hidden());
     }
