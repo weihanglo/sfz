@@ -24,10 +24,26 @@ use crate::server::serve;
 
 pub type BoxResult<T> = Result<T, Box<dyn std::error::Error>>;
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let handle = tokio::spawn(async {
+        use std::io::Read;
+        std::io::stdin()
+            .read_to_end(&mut Vec::new())
+            .unwrap_or_else(|e| handle_err(Box::new(e)));
+        tx.send(()).unwrap();
+    });
     Args::parse(matches())
-        .map(serve)
+        .map(|args| async {
+            tokio::join!(
+                serve(args, async {
+                    rx.await.ok();
+                }),
+                handle
+            )
+            .0
+        })
         .unwrap_or_else(handle_err)
         .await
         .unwrap_or_else(handle_err);

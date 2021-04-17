@@ -96,6 +96,9 @@ If you want to serve another directory, pass `[path]` positional argument in wit
 sfz /usr/local
 
 # Serve files under `/usr/local` directory.
+# 
+# You can press ctrl-c to exit immediately.
+# For shutting down the server gracefully, press Ctrl-d.
 ```
 
 ### Flags and Options
