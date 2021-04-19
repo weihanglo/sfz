@@ -3,7 +3,18 @@
 This project adheres to [Semantic Versioning](http://semver.org/).  
 Every release, along with the migration instructions, is documented on this file and Github [Releases](https://github.com/weihanglo/sfz/releases) page.
 
-## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.4.0...HEAD)
+## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.5.0...HEAD)
+
+## [v0.5.0] - 2021-04-19
+
+[Changes][v0.5.0-changes]
+
+- feat: support graceful shutdown via Ctrl-D ([#63][], thanks [@sayanarijit][]!)
+
+[@sayanarijit]: https://github.com/sayanarijit
+[v0.5.0]: https://github.com/weihanglo/sfz/releases/tag/v0.5.0
+[v0.5.0-changes]: https://github.com/weihanglo/sfz/compare/v0.4.0...v0.5.0
+[#63]: https://github.com/weihanglo/sfz/pull/63
 
 ## [v0.4.0] - 2021-03-17
 
