@@ -39,7 +39,7 @@ async fn main() {
             tokio::join!(
                 serve(args, async {
                     rx.await.ok();
-                    println!("Exit gracefully. Bye!");
+                    eprintln!("Exit gracefully. Bye!");
                 }),
                 handle
             )

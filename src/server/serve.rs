@@ -69,7 +69,7 @@ pub async fn serve(args: Args, f: impl Future<Output = ()>) -> BoxResult<()> {
 
     let server = hyper::Server::try_bind(&address)?.serve(make_svc);
     let address = server.local_addr();
-    println!(
+    eprintln!(
         "Files served on http://{}{}\nPress Ctrl-D to exit gracefully.",
         address, path_prefix
     );
