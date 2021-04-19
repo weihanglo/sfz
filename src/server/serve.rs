@@ -7,6 +7,7 @@
 // except according to those terms.
 
 use std::convert::{AsRef, Infallible};
+use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::str::Utf8Error;
@@ -52,7 +53,7 @@ pub enum PathType {
 }
 
 /// Run the server.
-pub async fn serve(args: Args) -> BoxResult<()> {
+pub async fn serve(args: Args, f: impl Future<Output = ()>) -> BoxResult<()> {
     let address = args.address()?;
     let path_prefix = args.path_prefix.clone().unwrap_or_default();
     let inner = Arc::new(InnerService::new(args));
@@ -68,8 +69,11 @@ pub async fn serve(args: Args) -> BoxResult<()> {
 
     let server = hyper::Server::try_bind(&address)?.serve(make_svc);
     let address = server.local_addr();
-    println!("Files served on http://{}{}", address, path_prefix);
-    server.await?;
+    eprintln!(
+        "Files served on http://{}{}\nPress Ctrl-D to exit gracefully.",
+        address, path_prefix
+    );
+    server.with_graceful_shutdown(f).await?;
 
     Ok(())
 }
