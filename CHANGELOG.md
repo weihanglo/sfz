@@ -3,7 +3,17 @@
 This project adheres to [Semantic Versioning](http://semver.org/).  
 Every release, along with the migration instructions, is documented on this file and Github [Releases](https://github.com/weihanglo/sfz/releases) page.
 
-## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.5.0...HEAD)
+## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.6.0...HEAD)
+
+## [v0.6.0] - 2021-04-23
+
+[Changes][v0.6.0-changes]
+
+- fix: revert graceful shutdown support in order to support background job controls ([#66][])
+
+[v0.6.0]: https://github.com/weihanglo/sfz/releases/tag/v0.6.0
+[v0.6.0-changes]: https://github.com/weihanglo/sfz/compare/v0.5.0...v0.6.0
+[#66]: https://github.com/weihanglo/sfz/pull/66
 
 ## [v0.5.0] - 2021-04-19
 
