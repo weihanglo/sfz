@@ -409,11 +409,20 @@ impl InnerService {
 
     fn guess_path_mime<P: AsRef<Path>>(path: P, action: Action) -> mime::Mime {
         let path = path.as_ref();
-        path.mime().unwrap_or_else(|| match action {
-            Action::ListDir => mime::TEXT_HTML_UTF_8,
-            Action::DownloadFile => mime::TEXT_PLAIN_UTF_8,
-            Action::DownloadZip => mime::APPLICATION_OCTET_STREAM,
-        })
+        path.mime()
+            .and_then(|x| {
+                if x.get_param(mime::CHARSET).is_some() {
+                    Some(x)
+                } else {
+                    // fallback to utf-8 if charset not detected
+                    format!("{}; charset=utf-8", x).parse().ok()
+                }
+            })
+            .unwrap_or_else(|| match action {
+                Action::ListDir => mime::TEXT_HTML_UTF_8,
+                Action::DownloadFile => mime::TEXT_PLAIN_UTF_8,
+                Action::DownloadZip => mime::APPLICATION_OCTET_STREAM,
+            })
     }
 }
 
@@ -464,6 +473,13 @@ mod t_server {
         let mime_type =
             InnerService::guess_path_mime("file-wthout-extension", Action::DownloadFile);
         assert_eq!(mime_type, mime::TEXT_PLAIN_UTF_8);
+
+        let mime_type = InnerService::guess_path_mime("file.json", Action::DownloadFile);
+        let json_utf8 = "application/json; charset=utf-8"
+            .parse::<mime::Mime>()
+            .unwrap();
+        assert_eq!(mime_type, json_utf8);
+        assert_eq!(mime_type.get_param(mime::CHARSET), Some(mime::UTF_8));
 
         let dir_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let mime_type = InnerService::guess_path_mime(dir_path, Action::ListDir);
