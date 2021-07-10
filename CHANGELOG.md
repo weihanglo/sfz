@@ -3,7 +3,17 @@
 This project adheres to [Semantic Versioning](http://semver.org/).  
 Every release, along with the migration instructions, is documented on this file and Github [Releases](https://github.com/weihanglo/sfz/releases) page.
 
-## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.6.0...HEAD)
+## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.6.1...HEAD)
+
+## [v0.6.1] - 2021-07-10
+
+- chore: bump hyper to 0.14.10 (two CVEs) ([#71][])
+- fix: content-type defaults to charset=utf-8 ([#68][])
+
+[v0.6.1]: https://github.com/weihanglo/sfz/releases/tag/v0.6.1
+[v0.6.1-changes]: https://github.com/weihanglo/sfz/compare/v0.6.0...v0.6.1
+[#68]: https://github.com/weihanglo/sfz/pull/68
+[#71]: https://github.com/weihanglo/sfz/pull/71[
 
 ## [v0.6.0] - 2021-04-23
 
