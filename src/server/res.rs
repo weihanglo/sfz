@@ -9,10 +9,26 @@
 //! Response factory functions.
 //!
 
-use headers::{ContentLength, HeaderMapExt};
+use headers::{ContentLength, Header, HeaderMapExt, HeaderValue, Location};
 use hyper::StatusCode;
 
 use crate::server::Response;
+
+/// Generate 304 NotModified response.
+pub fn moved_permanently(mut res: Response, src: &str) -> Response {
+    *res.status_mut() = StatusCode::MOVED_PERMANENTLY;
+    let location = match HeaderValue::from_str(src) {
+        Ok(location) => location,
+        Err(err) => panic!("{} cannot be formatted into a Location header: {}", src, err),
+    };
+    let location = match Location::decode(&mut std::iter::once(&location)) {
+        Ok(location) => location,
+        Err(err) => panic!("{} cannot be formatted into a Location header: {}", src, err),
+    };
+    res.headers_mut().typed_insert(location);
+    res
+}
+
 
 /// Generate 304 NotModified response.
 pub fn not_modified(mut res: Response) -> Response {

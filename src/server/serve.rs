@@ -118,7 +118,7 @@ impl InnerService {
     /// 3. URI percent decode.
     /// 4. If on windows, switch slashes
     /// 5. Concatenate base path and requested path.
-    fn file_path_from_path(&self, path: &str) -> Result<Option<PathBuf>, Utf8Error> {
+    fn file_path_from_path(&self, path: &str) -> Result<Option<(PathBuf, bool)>, Utf8Error> {
         let decoded = percent_decode(path[1..].as_bytes()).decode_utf8()?;
         let slashes_switched = if cfg!(windows) {
             decoded.replace("/", "\\")
@@ -130,11 +130,13 @@ impl InnerService {
             None => return Ok(None),
         };
         let mut path = self.args.path.join(stripped_path);
+        let mut rendered_index = false;
         if self.args.render_index && path.is_dir() {
-            path.push("index.html")
+            path.push("index.html");
+            rendered_index = true;
         }
 
-        Ok(Some(path))
+        Ok(Some((path, rendered_index)))
     }
 
     /// Enable HTTP cache control (current always enable with max-age=0)
@@ -246,10 +248,14 @@ impl InnerService {
         res.headers_mut()
             .typed_insert(Server::from_static(SERVER_VERSION));
 
-        let path = match self.file_path_from_path(req.uri().path())? {
+        let (path, rendered_index) = match self.file_path_from_path(req.uri().path())? {
             Some(path) => path,
             None => return Ok(res::not_found(res)),
         };
+
+        if rendered_index && !req.uri().path().ends_with('/') {
+            return Ok(res::moved_permanently(res, &format!("{}/", req.uri().path())));
+        }
 
         let default_action = if path.is_dir() {
             Action::ListDir
@@ -452,7 +458,7 @@ mod t_server {
         let path = "/%E4%BD%A0%E5%A5%BD%E4%B8%96%E7%95%8C";
         assert_eq!(
             service.file_path_from_path(path).unwrap(),
-            Some(PathBuf::from("/storage/你好世界"))
+            Some((PathBuf::from("/storage/你好世界"), false))
         );
 
         // Return index.html if `--render-index` flag is on.
@@ -464,7 +470,7 @@ mod t_server {
         let (service, _) = bootstrap(args);
         assert_eq!(
             service.file_path_from_path(".").unwrap(),
-            Some(dir.path().join("index.html")),
+            Some((dir.path().join("index.html"), true)),
         );
     }
 
