@@ -254,7 +254,10 @@ impl InnerService {
         };
 
         if rendered_index && !req.uri().path().ends_with('/') {
-            return Ok(res::moved_permanently(res, &format!("{}/", req.uri().path())));
+            return Ok(res::moved_permanently(
+                res,
+                &format!("{}/", req.uri().path()),
+            ));
         }
 
         let default_action = if path.is_dir() {
