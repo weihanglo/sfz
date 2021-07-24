@@ -14,7 +14,7 @@ use hyper::StatusCode;
 
 use crate::server::Response;
 
-/// Generate 304 NotModified response.
+/// Generate 301 Moved Permanently response.
 pub fn moved_permanently(mut res: Response, src: &str) -> Response {
     *res.status_mut() = StatusCode::MOVED_PERMANENTLY;
     let location = match HeaderValue::from_str(src) {
