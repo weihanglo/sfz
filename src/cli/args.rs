@@ -22,6 +22,7 @@ pub struct Args {
     pub cache: u64,
     pub cors: bool,
     pub compress: bool,
+    pub dav: bool,
     pub path: PathBuf,
     pub all: bool,
     pub ignore: bool,
@@ -45,6 +46,7 @@ impl Args {
         let path = Args::parse_path(path)?;
 
         let compress = !matches.is_present("unzipped");
+        let dav = matches.is_present("dav");
         let all = matches.is_present("all");
         let ignore = !matches.is_present("no-ignore");
         let follow_links = matches.is_present("follow-links");
@@ -61,6 +63,7 @@ impl Args {
             cors,
             path,
             compress,
+            dav,
             all,
             ignore,
             follow_links,
@@ -123,6 +126,7 @@ mod t {
                 cache: 0,
                 cors: true,
                 compress: true,
+                dav: false,
                 path: ".".into(),
                 all: true,
                 ignore: true,
@@ -158,6 +162,7 @@ mod t {
                     all: false,
                     cache: 0,
                     compress: true,
+                    dav: false,
                     cors: false,
                     follow_links: false,
                     ignore: true,

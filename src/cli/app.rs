@@ -46,6 +46,11 @@ pub fn matches<'a>() -> ArgMatches<'a> {
         .short("Z")
         .long("unzipped")
         .help("Disable HTTP compression");
+    
+    let arg_webdav = Arg::with_name("dav")
+        .short("D")
+        .long("dav")
+        .help("Enable WebDAV Service");
 
     let arg_all = Arg::with_name("all")
         .short("a")
@@ -84,6 +89,7 @@ pub fn matches<'a>() -> ArgMatches<'a> {
         .arg(arg_cors)
         .arg(arg_path)
         .arg(arg_unzipped)
+        .arg(arg_webdav)
         .arg(arg_all)
         .arg(arg_no_ignore)
         .arg(arg_no_log)

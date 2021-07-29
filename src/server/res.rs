@@ -30,6 +30,10 @@ pub fn not_found(res: Response) -> Response {
     prepare_response(res, StatusCode::NOT_FOUND, "404 Not Found")
 }
 
+pub fn method_not_allowed(res: Response) -> Response {
+    prepare_response(res, StatusCode::METHOD_NOT_ALLOWED, "405 Method Not Allowed")
+}
+
 /// Generate 412 PreconditionFailed response.
 pub fn precondition_failed(res: Response) -> Response {
     prepare_response(

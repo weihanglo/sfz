@@ -27,6 +27,7 @@ use mime_guess::mime;
 use percent_encoding::percent_decode;
 use qstring::QString;
 use serde::Serialize;
+use webdav_handler::{fakels::FakeLs, localfs::LocalFs, DavHandler};
 
 use crate::cli::Args;
 use crate::extensions::{MimeExt, PathExt, SystemTimeExt};
@@ -84,26 +85,40 @@ enum Action {
 struct InnerService {
     args: Args,
     gitignore: Gitignore,
+    dav: Option<DavHandler>,
 }
 
 impl InnerService {
     pub fn new(args: Args) -> Self {
         let gitignore = Gitignore::new(args.path.join(".gitignore")).0;
-        Self { args, gitignore }
+        let dav = if args.dav {
+            let handler = DavHandler::builder()
+                // TODO: check path_prefix
+                .filesystem(LocalFs::new(args.path.clone(), false, false, false))
+                .locksystem(FakeLs::new())
+                .build_handler();
+            Some(handler)
+        } else { None };
+        Self { args, gitignore, dav }
     }
 
     pub async fn call(self: Arc<Self>, req: Request) -> Result<Response, hyper::Error> {
+        let method = req.method().clone();
+        let uri    = req.uri().clone();
+
         let res = self
-            .handle_request(&req)
+            .handle_request(req)
+            .await
             .unwrap_or_else(|_| res::internal_server_error(Response::default()));
+        
         // Logging
         // TODO: use proper logging crate
         if self.args.log {
             println!(
                 r#"[{}] "{} {}" - {}"#,
                 Local::now().format("%d/%b/%Y %H:%M:%S"),
-                req.method(),
-                req.uri(),
+                method,
+                uri,
                 res.status(),
             );
         }
@@ -239,12 +254,34 @@ impl InnerService {
         }
     }
 
-    /// Request handler for `MyService`.
-    fn handle_request(&self, req: &Request) -> BoxResult<Response> {
-        // Construct response.
-        let mut res = Response::default();
+    async fn handle_request(&self, req: Request) -> BoxResult<Response> {
+        use hyper::Method;
+        let mut res = match req.method() {
+            &Method::GET     => self.handle_get(&req),
+            &Method::OPTIONS => self.handle_options(&req),
+            m if self.args.dav && m.as_str() == "PROPFIND"
+              => self.handle_propfind(req).await,
+            _ => Ok(res::method_not_allowed(Response::default())),
+        }?;
+
+        // Server Version headers
         res.headers_mut()
             .typed_insert(Server::from_static(SERVER_VERSION));
+        
+        if self.args.dav {
+            res.headers_mut().insert("dav", "1, 2".parse().unwrap());
+        }
+        
+        // CORS headers
+        self.enable_cors(&mut res);
+
+        Ok(res)
+    }
+
+    /// Request handler for `MyService`.
+    fn handle_get(&self, req: &Request) -> BoxResult<Response> {
+        // Construct response.
+        let mut res = Response::default();
 
         let path = match self.file_path_from_path(req.uri().path())? {
             Some(path) => path,
@@ -277,9 +314,6 @@ impl InnerService {
             }
             None => default_action,
         };
-
-        // CORS headers
-        self.enable_cors(&mut res);
 
         // Check critera if the path should be ignore (404 NotFound).
         if !self.path_exists(&path) {
@@ -404,6 +438,29 @@ impl InnerService {
             .typed_insert(ContentLength(body.len() as u64));
 
         *res.body_mut() = body.into();
+        Ok(res)
+    }
+
+    fn handle_options(&self, _req: &Request) -> BoxResult<Response> {
+        let mut res = Response::default();
+        *res.status_mut() = StatusCode::NO_CONTENT;
+        let header_allow = if self.args.dav {
+            "OPTIONS, GET, PROPFIND"
+        } else {
+            "OPTIONS, GET"
+        };
+        res.headers_mut()
+            .insert("Allow", header_allow.parse().unwrap());
+        Ok(res)
+    }
+
+    async fn handle_propfind(&self, req: Request) -> BoxResult<Response> {
+        let dav_server = self.dav.clone().unwrap();
+        let res = dav_server.handle(req).await;
+        let (parts, body) = res.into_parts();
+        let bytes = hyper::body::to_bytes(body).await.unwrap();
+        let body = hyper::Body::from(bytes);
+        let res = Response::from_parts(parts, body);
         Ok(res)
     }
 
