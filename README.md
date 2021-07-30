@@ -25,6 +25,7 @@ The name **sfz** is derived from an accented note [Sforzando][sforzando] in musi
 - Automatic rendering `index.html`
 - Respect `.gitignore` file
 - Customize path prefix
+- WebDAV supports
 
 ## Installation
 
@@ -111,6 +112,7 @@ USAGE:
 FLAGS:
     -a, --all             Serve hidden and dot (.) files
     -C, --cors            Enable Cross-Origin Resource Sharing from any origin (*)
+    -D, --dav             Enable WebDAV Service
     -L, --follow-links    Follow symlinks outside current serving base path
     -h, --help            Prints help information
     -I, --no-ignore       Don't respect gitignore file
