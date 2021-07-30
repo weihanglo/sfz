@@ -95,26 +95,32 @@ impl InnerService {
             let handler = DavHandler::builder();
             let handler = match args.path_prefix.clone() {
                 Some(prefix) => handler.strip_prefix(prefix),
-                None         => handler,
+                None => handler,
             };
             let handler = handler
                 .filesystem(LocalFs::new(args.path.clone(), false, false, false))
                 .locksystem(FakeLs::new())
                 .build_handler();
             Some(handler)
-        } else { None };
-        Self { args, gitignore, dav }
+        } else {
+            None
+        };
+        Self {
+            args,
+            gitignore,
+            dav,
+        }
     }
 
     pub async fn call(self: Arc<Self>, req: Request) -> Result<Response, hyper::Error> {
         let method = req.method().clone();
-        let uri    = req.uri().clone();
+        let uri = req.uri().clone();
 
         let res = self
             .handle_request(req)
             .await
             .unwrap_or_else(|_| res::internal_server_error(Response::default()));
-        
+
         // Logging
         // TODO: use proper logging crate
         if self.args.log {
@@ -261,21 +267,20 @@ impl InnerService {
     async fn handle_request(&self, req: Request) -> BoxResult<Response> {
         use hyper::Method;
         let mut res = match req.method() {
-            &Method::GET     => self.handle_get(&req),
+            &Method::GET => self.handle_get(&req),
             &Method::OPTIONS => self.handle_options(&req),
-            m if self.args.dav && m.as_str() == "PROPFIND"
-              => self.handle_propfind(req).await,
+            m if self.args.dav && m.as_str() == "PROPFIND" => self.handle_propfind(req).await,
             _ => Ok(res::method_not_allowed(Response::default())),
         }?;
 
         // Server Version headers
         res.headers_mut()
             .typed_insert(Server::from_static(SERVER_VERSION));
-        
+
         if self.args.dav {
             res.headers_mut().insert("dav", "1, 2".parse().unwrap());
         }
-        
+
         // CORS headers
         self.enable_cors(&mut res);
 

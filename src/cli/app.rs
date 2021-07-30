@@ -46,7 +46,7 @@ pub fn matches<'a>() -> ArgMatches<'a> {
         .short("Z")
         .long("unzipped")
         .help("Disable HTTP compression");
-    
+
     let arg_webdav = Arg::with_name("dav")
         .short("D")
         .long("dav")
