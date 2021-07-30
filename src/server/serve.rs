@@ -264,6 +264,7 @@ impl InnerService {
         }
     }
 
+    /// Request async handler for `MyService`.
     async fn handle_request(&self, req: Request) -> BoxResult<Response> {
         use hyper::Method;
         let mut res = match req.method() {
@@ -287,7 +288,7 @@ impl InnerService {
         Ok(res)
     }
 
-    /// Request handler for `MyService`.
+    /// Request handler for GET method
     fn handle_get(&self, req: &Request) -> BoxResult<Response> {
         // Construct response.
         let mut res = Response::default();
@@ -450,6 +451,7 @@ impl InnerService {
         Ok(res)
     }
 
+    /// Request handler for OPTIONS method
     fn handle_options(&self, _req: &Request) -> BoxResult<Response> {
         let mut res = Response::default();
         *res.status_mut() = StatusCode::NO_CONTENT;
@@ -463,6 +465,7 @@ impl InnerService {
         Ok(res)
     }
 
+    /// Request async handler for PROPFIND method of WebDAV
     async fn handle_propfind(&self, req: Request) -> BoxResult<Response> {
         let dav_server = self.dav.clone().unwrap();
         let res = dav_server.handle(req).await;
