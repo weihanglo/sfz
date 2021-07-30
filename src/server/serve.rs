@@ -92,8 +92,12 @@ impl InnerService {
     pub fn new(args: Args) -> Self {
         let gitignore = Gitignore::new(args.path.join(".gitignore")).0;
         let dav = if args.dav {
-            let handler = DavHandler::builder()
-                // TODO: check path_prefix
+            let handler = DavHandler::builder();
+            let handler = match args.path_prefix.clone() {
+                Some(prefix) => handler.strip_prefix(prefix),
+                None         => handler,
+            };
+            let handler = handler
                 .filesystem(LocalFs::new(args.path.clone(), false, false, false))
                 .locksystem(FakeLs::new())
                 .build_handler();
