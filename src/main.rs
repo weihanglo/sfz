@@ -8,7 +8,7 @@
 
 macro_rules! bail {
     ($($tt:tt)*) => {
-        return Err(From::from(format!($($tt)*)));
+        return Err(From::from(format!($($tt)*)))
     }
 }
 
