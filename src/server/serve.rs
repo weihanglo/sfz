@@ -410,13 +410,12 @@ impl InnerService {
     fn guess_path_mime<P: AsRef<Path>>(path: P, action: Action) -> mime::Mime {
         let path = path.as_ref();
         path.mime()
-            .and_then(|x| {
-                if x.get_param(mime::CHARSET).is_some() {
-                    Some(x)
-                } else {
-                    // fallback to utf-8 if charset not detected
-                    format!("{}; charset=utf-8", x).parse().ok()
-                }
+            .map(|x| match x.get_param(mime::CHARSET) {
+                Some(_) => x,
+                None => x
+                    .guess_charset()
+                    .and_then(|c| format!("{}; charset={}", x, c).parse().ok())
+                    .unwrap_or(x),
             })
             .unwrap_or_else(|| match action {
                 Action::ListDir => mime::TEXT_HTML_UTF_8,
@@ -480,6 +479,11 @@ mod t_server {
             .unwrap();
         assert_eq!(mime_type, json_utf8);
         assert_eq!(mime_type.get_param(mime::CHARSET), Some(mime::UTF_8));
+
+        let mime_type = InnerService::guess_path_mime("lib.wasm", Action::DownloadFile);
+        let wasm = "application/wasm".parse::<mime::Mime>().unwrap();
+        assert_eq!(mime_type, wasm);
+        assert_eq!(mime_type.get_param(mime::CHARSET), None);
 
         let dir_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let mime_type = InnerService::guess_path_mime(dir_path, Action::ListDir);
