@@ -91,6 +91,7 @@ impl SystemTimeExt for SystemTime {
 
 pub trait MimeExt {
     fn is_compressed_format(&self) -> bool;
+    fn guess_charset(&self) -> Option<mime::Name>;
 }
 
 impl MimeExt for Mime {
@@ -98,14 +99,37 @@ impl MimeExt for Mime {
     ///
     /// - `video/*`
     /// - `audio/*`
-    /// - `*/GIF`
-    /// - `*/JPEG`
-    /// - `*/PNG`
+    /// - `*/gif`
+    /// - `*/jpeg`
+    /// - `*/png`
+    /// - `*/bmp`
+    /// - `*/avif`
+    /// - `*/webp`
+    /// - `*/tiff`
     fn is_compressed_format(&self) -> bool {
-        match (self.type_(), self.subtype()) {
-            (mime::VIDEO, _) | (mime::AUDIO, _) => true,
-            (_, mime::GIF) | (_, mime::JPEG) | (_, mime::PNG) => true,
+        let subtype = self.subtype();
+        match (self.type_(), subtype, subtype.as_str()) {
+            (mime::VIDEO | mime::AUDIO, _, _) => true,
+            (_, mime::GIF | mime::JPEG | mime::PNG | mime::BMP, _) => true,
+            (_, _, "avif" | "webp" | "tiff") => true,
             _ => false,
+        }
+    }
+
+    /// Detect possible charset.
+    ///
+    /// In order not to perform any I/O. We only inspect the type of mime to
+    /// determine the charset.
+    ///
+    /// - `text/*`, `*/xml`, `*/javascript`, `*/json` -> UTF-8
+    /// - `*/*+xml`, `*/*+json` -> UTF-8
+    /// - others -> leave it as is
+    fn guess_charset(&self) -> Option<mime::Name> {
+        match (self.type_(), self.subtype(), self.suffix()) {
+            (mime::TEXT, _, _)
+            | (_, mime::XML | mime::JAVASCRIPT | mime::JSON, _)
+            | (_, _, Some(mime::XML | mime::JSON)) => Some(mime::UTF_8),
+            _ => None,
         }
     }
 }
@@ -192,29 +216,44 @@ mod t_extensions {
 
     #[test]
     fn mime_is_compressed() {
-        assert!("video/*"
+        let cases = [
+            "video/*", "audio/*", "*/gif", "*/jpeg", "*/png", "*/bmp", "*/avif", "*/webp", "*/tiff",
+        ];
+        for mime in cases {
+            assert!(mime.parse::<mime::Mime>().unwrap().is_compressed_format());
+        }
+
+        assert_eq!(
+            "text/*"
+                .parse::<mime::Mime>()
+                .unwrap()
+                .is_compressed_format(),
+            false
+        );
+    }
+
+    #[test]
+    fn guess_charset() {
+        let cases = [
+            "application/json",
+            "application/xml",
+            "application/javascript",
+            "application/atmo+xml",
+            "application/geo+json",
+            "text/plain",
+            "text/x-yaml",
+        ];
+        for mime in cases {
+            assert_eq!(
+                mime.parse::<mime::Mime>().unwrap().guess_charset(),
+                Some(mime::UTF_8)
+            );
+        }
+
+        assert!("application/octet-stream"
             .parse::<mime::Mime>()
             .unwrap()
-            .is_compressed_format());
-        assert!("audio/*"
-            .parse::<mime::Mime>()
-            .unwrap()
-            .is_compressed_format());
-        assert!("*/gif"
-            .parse::<mime::Mime>()
-            .unwrap()
-            .is_compressed_format());
-        assert!("*/jpeg"
-            .parse::<mime::Mime>()
-            .unwrap()
-            .is_compressed_format());
-        assert!("*/png"
-            .parse::<mime::Mime>()
-            .unwrap()
-            .is_compressed_format());
-        assert!(!"text/*"
-            .parse::<mime::Mime>()
-            .unwrap()
-            .is_compressed_format());
+            .guess_charset()
+            .is_none());
     }
 }
