@@ -75,7 +75,7 @@ $ git clone https://github.com/weihanglo/sfz.git
 $ cd sfz
 $ cargo build --release
 $ ./target/release/sfz --version
-0.6.1
+0.6.2
 ```
 
 [install-rust]: https://www.rust-lang.org/install.html

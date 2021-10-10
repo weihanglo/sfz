@@ -3,7 +3,15 @@
 This project adheres to [Semantic Versioning](http://semver.org/).  
 Every release, along with the migration instructions, is documented on this file and Github [Releases](https://github.com/weihanglo/sfz/releases) page.
 
-## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.6.1...HEAD)
+## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.6.2...HEAD)
+
+## [v0.6.2] - 2021-10-10
+
+- fix: guess charset naively ([#77][])
+
+[v0.6.2]: https://github.com/weihanglo/sfz/releases/tag/v0.6.2
+[v0.6.2-changes]: https://github.com/weihanglo/sfz/compare/v0.6.1...v0.6.2
+[#77]: https://github.com/weihanglo/sfz/pull/77
 
 ## [v0.6.1] - 2021-07-10
 
@@ -13,7 +21,7 @@ Every release, along with the migration instructions, is documented on this file
 [v0.6.1]: https://github.com/weihanglo/sfz/releases/tag/v0.6.1
 [v0.6.1-changes]: https://github.com/weihanglo/sfz/compare/v0.6.0...v0.6.1
 [#68]: https://github.com/weihanglo/sfz/pull/68
-[#71]: https://github.com/weihanglo/sfz/pull/71[
+[#71]: https://github.com/weihanglo/sfz/pull/71
 
 ## [v0.6.0] - 2021-04-23
 
