@@ -40,7 +40,7 @@ li {
   display: flex;
   list-style: none;
   width: 200px;
-  padding: 1em;
+  padding: .6em 1em;
 }
 
 li div {
@@ -64,6 +64,7 @@ li a {
   overflow: hidden;
   display: block;
   text-decoration: none;
+  padding: 3px 0 0 0;
 }
 
 li a:hover {
