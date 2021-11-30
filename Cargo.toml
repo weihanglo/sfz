@@ -1,6 +1,6 @@
 [package]
 name = "sfz"
-version = "0.6.2"
+version = "0.6.3"
 authors = ["Weihang Lo <me@weihanglo.tw>"]
 description = "A simple static file serving command-line tool."
 documentation = "https://github.com/weihanglo/sfz"
