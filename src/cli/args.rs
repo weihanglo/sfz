@@ -11,7 +11,7 @@ use std::fs::canonicalize;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-use clap::{value_t, ArgMatches};
+use clap::ArgMatches;
 
 use crate::BoxResult;
 
@@ -36,12 +36,12 @@ impl Args {
     ///
     /// If a parsing error ocurred, exit the process and print out informative
     /// error message to user.
-    pub fn parse(matches: ArgMatches<'_>) -> BoxResult<Args> {
+    pub fn parse(matches: ArgMatches) -> BoxResult<Args> {
         let address = matches.value_of("address").unwrap_or_default().to_owned();
-        let port = value_t!(matches.value_of("port"), u16)?;
-        let cache = value_t!(matches.value_of("cache"), u64)?;
+        let port = matches.value_of_t::<u16>("port")?;
+        let cache = matches.value_of_t::<u64>("cache")?;
         let cors = matches.is_present("cors");
-        let path = matches.value_of("path").unwrap_or_default();
+        let path = matches.value_of_os("path").unwrap_or_default();
         let path = Args::parse_path(path)?;
 
         let compress = !matches.is_present("unzipped");

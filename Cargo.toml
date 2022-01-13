@@ -15,7 +15,7 @@ edition = "2021"
 
 [dependencies]
 # Command-line
-clap = { version = "2.33", default-features = false }
+clap = { version = "3", default-features = false, features = ["std", "cargo"] }
 # Server
 tokio = { version = "1", features = ["rt", "macros"]}
 hyper = { version = "0.14.10", features = ["http1", "server", "tcp"] }
