@@ -21,6 +21,7 @@ pub struct Args {
     pub port: u16,
     pub cache: u64,
     pub cors: bool,
+    pub coi: bool,
     pub compress: bool,
     pub path: PathBuf,
     pub all: bool,
@@ -41,6 +42,7 @@ impl Args {
         let port = matches.value_of_t::<u16>("port")?;
         let cache = matches.value_of_t::<u64>("cache")?;
         let cors = matches.is_present("cors");
+        let coi = matches.is_present("coi");
         let path = matches.value_of_os("path").unwrap_or_default();
         let path = Args::parse_path(path)?;
 
@@ -59,6 +61,7 @@ impl Args {
             port,
             cache,
             cors,
+            coi,
             path,
             compress,
             all,
@@ -122,6 +125,7 @@ mod t {
                 port: 5000,
                 cache: 0,
                 cors: true,
+                coi: true,
                 compress: true,
                 path: ".".into(),
                 all: true,
@@ -159,6 +163,7 @@ mod t {
                     cache: 0,
                     compress: true,
                     cors: false,
+                    coi: false,
                     follow_links: false,
                     ignore: true,
                     log: true,
