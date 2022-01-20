@@ -31,6 +31,10 @@ fn app() -> clap::App<'static> {
         .long("cors")
         .help("Enable Cross-Origin Resource Sharing from any origin (*)");
 
+    let arg_coi = Arg::new("coi")
+        .long("coi")
+        .help("Enable Cross-Origin isolation");
+
     let arg_cache = Arg::new("cache")
         .short('c')
         .long("cache")
@@ -83,6 +87,7 @@ fn app() -> clap::App<'static> {
         .arg(arg_port)
         .arg(arg_cache)
         .arg(arg_cors)
+        .arg(arg_coi)
         .arg(arg_path)
         .arg(arg_unzipped)
         .arg(arg_all)

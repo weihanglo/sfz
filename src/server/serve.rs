@@ -38,6 +38,8 @@ use crate::server::{res, Request, Response};
 use crate::BoxResult;
 
 const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+const CROSS_ORIGIN_EMBEDDER_POLICY: &str = "Cross-Origin-Embedder-Policy";
+const CROSS_ORIGIN_OPENER_POLICY: &str = "Cross-Origin-Opener-Policy";
 
 /// Indicate that a path is a normal file/dir or a symlink to another path/dir.
 ///
@@ -163,6 +165,20 @@ impl InnerService {
         }
     }
 
+    /// Enable cross-origin isolation for given response.
+    fn enable_coi(&self, res: &mut Response) {
+        if self.args.coi {
+            res.headers_mut().insert(
+                CROSS_ORIGIN_EMBEDDER_POLICY,
+                HeaderValue::from_str("require-corp").unwrap(),
+            );
+            res.headers_mut().insert(
+                CROSS_ORIGIN_OPENER_POLICY,
+                HeaderValue::from_str("same-origin").unwrap(),
+            );
+        }
+    }
+
     /// Determine if payload should be compressed.
     ///
     /// Enable compression when all criteria are met:
@@ -280,6 +296,9 @@ impl InnerService {
 
         // CORS headers
         self.enable_cors(&mut res);
+
+        // COOP and COEP headers
+        self.enable_coi(&mut res);
 
         // Check critera if the path should be ignore (404 NotFound).
         if !self.path_exists(&path) {
@@ -517,6 +536,21 @@ mod t_server {
             ]
             .into_iter()
             .collect::<AccessControlAllowHeaders>(),
+        );
+    }
+
+    #[test]
+    fn enable_coi() {
+        let args = Args::default();
+        let (service, mut res) = bootstrap(args);
+        service.enable_coi(&mut res);
+        assert_eq!(
+            res.headers().get(CROSS_ORIGIN_OPENER_POLICY).unwrap(),
+            "same-origin",
+        );
+        assert_eq!(
+            res.headers().get(CROSS_ORIGIN_EMBEDDER_POLICY).unwrap(),
+            "require-corp",
         );
     }
 
