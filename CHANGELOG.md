@@ -3,7 +3,26 @@
 This project adheres to [Semantic Versioning](http://semver.org/).  
 Every release, along with the migration instructions, is documented on this file and Github [Releases](https://github.com/weihanglo/sfz/releases) page.
 
-## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.6.2...HEAD)
+## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.7.0...HEAD)
+
+## [v0.7.0] - 2022-01-21
+
+- feat: add title attribute to provide a full length file name tooltip ([#78][], kudos to [@mu-arch][]!)
+- feat: add arg coi for cross-origin isolation ([#84][], thanks [@HKalbasi][]!)
+- fix: guess charset naively ([#77][])
+- chore: ugprade to Rust Edition 2021 :tada:
+- chore: bump clap to v3 :tada: ([#82][])
+- chore: cargo update ([#81][], kudos to [@henry40408][]!)
+
+[@mu-arch]: https://github.com/mu-arch
+[@henry40408]: https://github.com/henry40408
+[@HKalbasi]: https://github.com/HKalbasi
+[v0.7.0]: https://github.com/weihanglo/sfz/releases/tag/v0.7.0
+[v0.7.0-changes]: https://github.com/weihanglo/sfz/compare/v0.6.2...v0.7.0
+[#78]: https://github.com/weihanglo/sfz/pull/78
+[#81]: https://github.com/weihanglo/sfz/pull/81
+[#82]: https://github.com/weihanglo/sfz/pull/82
+[#84]: https://github.com/weihanglo/sfz/pull/84
 
 ## [v0.6.2] - 2021-10-10
 
