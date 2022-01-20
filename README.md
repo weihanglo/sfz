@@ -75,7 +75,7 @@ $ git clone https://github.com/weihanglo/sfz.git
 $ cd sfz
 $ cargo build --release
 $ ./target/release/sfz --version
-0.6.2
+0.7.0
 ```
 
 [install-rust]: https://www.rust-lang.org/install.html
@@ -106,27 +106,27 @@ sfz aims to be simple but configurable. Here is a list of available options:
 
 ```
 USAGE:
-    sfz [FLAGS] [OPTIONS] [path]
-
-FLAGS:
-    -a, --all             Serve hidden and dot (.) files
-    -C, --cors            Enable Cross-Origin Resource Sharing from any origin (*)
-    -L, --follow-links    Follow symlinks outside current serving base path
-    -h, --help            Prints help information
-    -I, --no-ignore       Don't respect gitignore file
-        --no-log          Don't log any request/response information.
-    -r, --render-index    Render existing index.html when requesting a directory.
-    -Z, --unzipped        Disable HTTP compression
-    -V, --version         Prints version information
-
-OPTIONS:
-    -b, --bind <address>        Specify bind address [default: 127.0.0.1]
-    -c, --cache <seconds>       Specify max-age of HTTP caching in seconds [default: 0]
-        --path-prefix <path>    Specify an url path prefix, helpful when running behing a reverse proxy
-    -p, --port <port>           Specify port to listen on [default: 5000]
+    sfz [OPTIONS] [path]
 
 ARGS:
     <path>    Path to a directory for serving files [default: .]
+
+OPTIONS:
+    -a, --all                   Serve hidden and dot (.) files
+    -b, --bind <address>        Specify bind address [default: 127.0.0.1]
+    -c, --cache <seconds>       Specify max-age of HTTP caching in seconds [default: 0]
+    -C, --cors                  Enable Cross-Origin Resource Sharing from any origin (*)
+        --coi                   Enable Cross-Origin isolation
+    -h, --help                  Print help information
+    -I, --no-ignore             Don't respect gitignore file
+    -L, --follow-links          Follow symlinks outside current serving base path
+        --no-log                Don't log any request/response information.
+    -p, --port <port>           Specify port to listen on [default: 5000]
+        --path-prefix <path>    Specify an url path prefix, helpful when running behing a reverse
+                                proxy
+    -r, --render-index          Render existing index.html when requesting a directory.
+    -V, --version               Print version information
+    -Z, --unzipped              Disable HTTP compression
 ```
 
 ## Contributing
