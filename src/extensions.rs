@@ -108,6 +108,7 @@ impl MimeExt for Mime {
     /// - `*/tiff`
     fn is_compressed_format(&self) -> bool {
         let subtype = self.subtype();
+        #[allow(clippy::match_like_matches_macro)]
         match (self.type_(), subtype, subtype.as_str()) {
             (mime::VIDEO | mime::AUDIO, _, _) => true,
             (_, mime::GIF | mime::JPEG | mime::PNG | mime::BMP, _) => true,

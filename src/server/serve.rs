@@ -340,12 +340,12 @@ impl InnerService {
                     .unwrap();
 
                 // Validate preconditions of conditional requests.
-                if is_precondition_failed(&req, &etag, mtime) {
+                if is_precondition_failed(req, &etag, mtime) {
                     return Ok(res::precondition_failed(res));
                 }
 
                 // Validate cache freshness.
-                if is_fresh(&req, &etag, mtime) {
+                if is_fresh(req, &etag, mtime) {
                     res.headers_mut().typed_insert(last_modified);
                     res.headers_mut().typed_insert(etag);
                     return Ok(res::not_modified(res));
@@ -353,8 +353,9 @@ impl InnerService {
 
                 // Range Request support.
                 if let Some(range) = req.headers().typed_get::<Range>() {
+                    #[allow(clippy::single_match)]
                     match (
-                        is_range_fresh(&req, &etag, &last_modified),
+                        is_range_fresh(req, &etag, &last_modified),
                         is_satisfiable_range(&range, size as u64),
                     ) {
                         (true, Some(content_range)) => {
