@@ -6,12 +6,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use clap::{app_from_crate, crate_description};
+use clap::crate_description;
 use clap::{Arg, ArgMatches};
 
 const ABOUT: &str = concat!("\n", crate_description!()); // Add extra newline.
 
-fn app() -> clap::App<'static> {
+fn app() -> clap::Command<'static> {
     let arg_port = Arg::new("port")
         .short('p')
         .long("port")
@@ -81,7 +81,7 @@ fn app() -> clap::App<'static> {
         .help("Specify an url path prefix, helpful when running behing a reverse proxy")
         .value_name("path");
 
-    app_from_crate!()
+    clap::command!()
         .about(ABOUT)
         .arg(arg_address)
         .arg(arg_port)
