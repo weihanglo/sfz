@@ -887,7 +887,7 @@ dependencies = [
 
 [[package]]
 name = "sfz"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "brotli",
  "chrono",
