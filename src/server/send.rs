@@ -342,6 +342,12 @@ mod t {
         assert_eq!(breadcrumbs[2].name, "b");
         assert_eq!(breadcrumbs[2].path, "/a/b");
     }
+
+    #[test]
+    fn render_user_defined_style() {
+        let page = render("", &vec![], &vec![], "li { width: 400px; }");
+        assert!(page.contains("<style>li { width: 400px; }</style>"))
+    }
 }
 
 #[cfg(test)]
