@@ -65,6 +65,7 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     show_all: bool,
     with_ignore: bool,
     path_prefix: Option<&str>,
+    user_style: &str,
 ) -> io::Result<Vec<u8>> {
     let base_path = base_path.as_ref();
     let dir_path = dir_path.as_ref();
@@ -130,7 +131,7 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     // Sort files (dir-first and lexicographic ordering).
     files.sort_unstable();
 
-    Ok(render(dir_path.filename_str(), &files, &breadcrumbs).into())
+    Ok(render(dir_path.filename_str(), &files, &breadcrumbs, user_style).into())
 }
 
 /// Send a buffer of file to client.
@@ -247,12 +248,13 @@ fn create_breadcrumbs<'a>(
 }
 
 /// Render page with Tera template engine.
-fn render(dir_name: &str, files: &[Item], breadcrumbs: &[Breadcrumb]) -> String {
+fn render(dir_name: &str, files: &[Item], breadcrumbs: &[Breadcrumb], user_style: &str) -> String {
     let mut ctx = Context::new();
     ctx.insert("dir_name", dir_name);
     ctx.insert("files", files);
     ctx.insert("breadcrumbs", breadcrumbs);
     ctx.insert("style", include_str!("style.css"));
+    ctx.insert("user_style", user_style);
     Tera::one_off(include_str!("index.html"), &ctx, true)
         .unwrap_or_else(|e| format!("500 Internal server error: {}", e))
 }
@@ -263,7 +265,7 @@ mod t {
 
     #[test]
     fn render_successfully() {
-        let page = render("", &vec![], &vec![]);
+        let page = render("", &vec![], &vec![], "");
         assert!(page.starts_with("<!DOCTYPE html>"))
     }
     #[test]

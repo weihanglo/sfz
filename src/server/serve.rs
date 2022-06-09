@@ -324,6 +324,7 @@ impl InnerService {
                     self.args.all,
                     self.args.ignore,
                     self.args.path_prefix.as_deref(),
+                    &self.args.user_style,
                 );
             }
             Action::DownloadFile => {

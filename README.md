@@ -125,6 +125,7 @@ OPTIONS:
         --path-prefix <path>    Specify an url path prefix, helpful when running behing a reverse
                                 proxy
     -r, --render-index          Render existing index.html when requesting a directory.
+        --style <style>         Specify a user-defined style to override the default one [default: ]
     -V, --version               Print version information
     -Z, --unzipped              Disable HTTP compression
 ```

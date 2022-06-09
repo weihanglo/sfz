@@ -30,6 +30,7 @@ pub struct Args {
     pub render_index: bool,
     pub log: bool,
     pub path_prefix: Option<String>,
+    pub user_style: String,
 }
 
 impl Args {
@@ -55,6 +56,7 @@ impl Args {
         let path_prefix = matches
             .value_of("path-prefix")
             .map(|s| format!("/{}", s.trim_start_matches('/')));
+        let user_style = matches.value_of("user_style").unwrap_or_default().to_string();
 
         Ok(Args {
             address,
@@ -70,6 +72,7 @@ impl Args {
             render_index,
             log,
             path_prefix,
+            user_style,
         })
     }
 
@@ -134,6 +137,7 @@ mod t {
                 render_index: true,
                 log: true,
                 path_prefix: None,
+                user_style: "".to_owned(),
             }
         }
     }
@@ -170,7 +174,8 @@ mod t {
                     path,
                     path_prefix: None,
                     render_index: false,
-                    port: 5000
+                    port: 5000,
+                    user_style: "".to_string(),
                 }
             );
         });

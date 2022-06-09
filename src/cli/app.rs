@@ -81,6 +81,12 @@ fn app() -> clap::Command<'static> {
         .help("Specify an url path prefix, helpful when running behing a reverse proxy")
         .value_name("path");
 
+    let arg_user_style = Arg::new("user_style")
+        .long("style")
+        .default_value("")
+        .help("Specify a user-defined style to override the default one")
+        .value_name("style");
+
     clap::command!()
         .about(ABOUT)
         .arg(arg_address)
@@ -96,6 +102,7 @@ fn app() -> clap::Command<'static> {
         .arg(arg_follow_links)
         .arg(arg_render_index)
         .arg(arg_path_prefix)
+        .arg(arg_user_style)
 }
 
 pub fn matches() -> ArgMatches {
