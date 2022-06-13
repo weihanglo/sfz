@@ -56,7 +56,10 @@ impl Args {
         let path_prefix = matches
             .value_of("path-prefix")
             .map(|s| format!("/{}", s.trim_start_matches('/')));
-        let user_style = matches.value_of("user_style").unwrap_or_default().to_string();
+        let user_style = matches
+            .value_of("user_style")
+            .unwrap_or_default()
+            .to_string();
 
         Ok(Args {
             address,
