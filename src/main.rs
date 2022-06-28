@@ -18,13 +18,13 @@ mod http;
 mod server;
 #[cfg(test)]
 pub mod test_utils;
-
+use tokio::main;
 use crate::cli::{matches, Args};
 use crate::server::serve;
 
 pub type BoxResult<T> = Result<T, Box<dyn std::error::Error>>;
 
-#[tokio::main(flavor = "current_thread")]
+#[main(flavor = "current_thread")]
 async fn main() {
     Args::parse(matches())
         .map(serve)
