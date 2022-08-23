@@ -7,16 +7,10 @@
 // except according to those terms.
 
 use std::cmp::Ordering;
-use std::io::{self, BufReader};
 
-use flate2::read::{DeflateEncoder, GzEncoder};
-use flate2::Compression;
 use hyper::header::HeaderValue;
 
-const IDENTITY: &str = "identity";
-const DEFLATE: &str = "deflate";
-const GZIP: &str = "gzip";
-const BR: &str = "br";
+use super::{BR, DEFLATE, GZIP, IDENTITY};
 
 /// Inner helper type to store quality values.
 ///
@@ -122,32 +116,6 @@ pub fn get_prior_encoding<'a>(accept_encoding: &'a HeaderValue) -> &'static str 
         .unwrap_or(IDENTITY)
 }
 
-/// Compress data.
-///
-/// # Parameters
-///
-/// * `data` - Data to be compressed.
-/// * `encoding` - Only support `br`, `gzip`, `deflate` and `identity`.
-pub fn compress(data: &[u8], encoding: &str) -> io::Result<Vec<u8>> {
-    use std::io::prelude::*;
-    let mut buf = Vec::new();
-    match encoding {
-        BR => {
-            BufReader::new(brotli::CompressorReader::new(data, 4096, 6, 20))
-                .read_to_end(&mut buf)?;
-        }
-        GZIP => {
-            BufReader::new(GzEncoder::new(data, Compression::default())).read_to_end(&mut buf)?;
-        }
-        DEFLATE => {
-            BufReader::new(DeflateEncoder::new(data, Compression::default()))
-                .read_to_end(&mut buf)?;
-        }
-        _ => return Err(io::Error::new(io::ErrorKind::Other, "Unsupported Encoding")),
-    };
-    Ok(buf)
-}
-
 #[cfg(test)]
 mod t_parse_qvalue {
     use super::*;
@@ -238,26 +206,5 @@ mod t_prior {
         let accept_encoding = HeaderValue::from_static("brotli;q=0,gzip;q=0,deflate");
         let encoding = get_prior_encoding(&accept_encoding);
         assert_eq!(encoding, DEFLATE);
-    }
-}
-
-#[cfg(test)]
-mod t_compress {
-    use super::*;
-
-    #[test]
-    fn failed() {
-        let error = compress(b"hello", "unrecognized").unwrap_err();
-        assert_eq!(error.kind(), io::ErrorKind::Other);
-    }
-
-    #[test]
-    fn compressed() {
-        let buf = compress(b"xxxxx", DEFLATE);
-        assert!(!buf.unwrap().is_empty());
-        let buf = compress(b"xxxxx", GZIP);
-        assert!(!buf.unwrap().is_empty());
-        let buf = compress(b"xxxxx", BR);
-        assert!(!buf.unwrap().is_empty());
     }
 }

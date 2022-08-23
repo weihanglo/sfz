@@ -13,7 +13,9 @@ use std::str::Utf8Error;
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_compression::tokio::bufread::{BrotliEncoder, DeflateEncoder, GzipEncoder};
 use chrono::Local;
+use futures::{Stream, TryStreamExt};
 use headers::{
     AcceptRanges, AccessControlAllowHeaders, AccessControlAllowOrigin, CacheControl, ContentLength,
     ContentType, ETag, HeaderMapExt, LastModified, Range, Server,
@@ -21,20 +23,27 @@ use headers::{
 // Can not use headers::ContentDisposition. Because of https://github.com/hyperium/headers/issues/8
 use hyper::header::{HeaderValue, CONTENT_DISPOSITION};
 use hyper::service::{make_service_fn, service_fn};
-use hyper::StatusCode;
+use hyper::{Body, StatusCode};
 use ignore::gitignore::Gitignore;
 use mime_guess::mime;
 use percent_encoding::percent_decode;
 use qstring::QString;
 use serde::Serialize;
+use tokio_util::io::{ReaderStream, StreamReader};
 
 use crate::cli::Args;
 use crate::extensions::{MimeExt, PathExt, SystemTimeExt};
-use crate::http::conditional_requests::{is_fresh, is_precondition_failed};
-use crate::http::content_encoding::{compress, get_prior_encoding};
-use crate::http::range_requests::{is_range_fresh, is_satisfiable_range};
-use crate::server::send::{send_dir, send_dir_as_zip, send_file, send_file_with_range};
-use crate::server::{res, Request, Response};
+use crate::http::{
+    conditional_requests::{is_fresh, is_precondition_failed},
+    content_encoding::get_prior_encoding,
+    range_requests::{is_range_fresh, is_satisfiable_range},
+    BR, DEFLATE, GZIP,
+};
+use crate::server::{
+    res,
+    send::{send_dir, send_dir_as_zip, send_file, send_file_with_range},
+    Request, Response,
+};
 use crate::BoxResult;
 
 const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
@@ -97,6 +106,7 @@ impl InnerService {
     pub async fn call(self: Arc<Self>, req: Request) -> Result<Response, hyper::Error> {
         let res = self
             .handle_request(&req)
+            .await
             .unwrap_or_else(|_| res::internal_server_error(Response::default()));
         // Logging
         // TODO: use proper logging crate
@@ -256,7 +266,7 @@ impl InnerService {
     }
 
     /// Request handler for `MyService`.
-    fn handle_request(&self, req: &Request) -> BoxResult<Response> {
+    async fn handle_request(&self, req: &Request) -> BoxResult<Response> {
         // Construct response.
         let mut res = Response::default();
         res.headers_mut()
@@ -313,18 +323,21 @@ impl InnerService {
 
         // Prepare response body.
         // Being mutable for further modifications.
-        let mut body: io::Result<Vec<u8>> = Ok(Vec::new());
+        let mut body = Body::empty();
+        let mut content_length: Option<u64> = None;
 
         // Extra process for serving files.
         match action {
             Action::ListDir => {
-                body = send_dir(
-                    &path,
-                    &self.args.path,
+                let (stream, size) = send_dir(
+                    path.clone(),
+                    self.args.path.clone(),
                     self.args.all,
                     self.args.ignore,
                     self.args.path_prefix.as_deref(),
-                );
+                )?;
+                content_length = Some(size as u64);
+                body = Body::wrap_stream(stream);
             }
             Action::DownloadFile => {
                 // Cache-Control.
@@ -361,7 +374,8 @@ impl InnerService {
                         (true, Some(content_range)) => {
                             // 206 Partial Content.
                             if let Some(range) = content_range.bytes_range() {
-                                body = send_file_with_range(&path, range);
+                                let stream = send_file_with_range(path.clone(), range).await?;
+                                body = Body::wrap_stream(stream);
                             }
                             res.headers_mut().typed_insert(content_range);
                             *res.status_mut() = StatusCode::PARTIAL_CONTENT;
@@ -373,13 +387,20 @@ impl InnerService {
                 }
 
                 if res.status() != StatusCode::PARTIAL_CONTENT {
-                    body = send_file(&path);
+                    let (stream, size) = send_file(path.clone()).await?;
+                    content_length = Some(size);
+                    body = Body::wrap_stream(stream);
                 }
                 res.headers_mut().typed_insert(last_modified);
                 res.headers_mut().typed_insert(etag);
             }
             Action::DownloadZip => {
-                body = send_dir_as_zip(&path, self.args.all, self.args.ignore);
+                let all = self.args.all;
+                let ignore = self.args.ignore;
+                let (stream, size) = send_dir_as_zip(path.clone(), all, ignore).await?;
+
+                content_length = Some(size);
+                body = Body::wrap_stream(stream);
 
                 // Changing the filename
                 res.headers_mut().insert(
@@ -393,18 +414,21 @@ impl InnerService {
             }
         }
 
-        let mut body = body?;
         let mime_type = InnerService::guess_path_mime(&path, action);
 
-        if self.can_compress(res.status(), &mime_type) {
-            let encoding = res
+        let body = if self.can_compress(res.status(), &mime_type) {
+            let encoding = req
                 .headers()
                 .get(hyper::header::ACCEPT_ENCODING)
                 .map(get_prior_encoding)
                 .unwrap_or_default();
             // No Accept-Encoding would not be compress.
-            if let Ok(buf) = compress(&body, encoding) {
-                body = buf;
+            let (stream, compressed) = self.compress_stream(
+                // Convert hyper::Error to std::io::Error
+                body.map_err(|_e| io::Error::from(io::ErrorKind::InvalidData)),
+                encoding,
+            );
+            if compressed {
                 res.headers_mut().insert(
                     hyper::header::CONTENT_ENCODING,
                     hyper::header::HeaderValue::from_static(encoding),
@@ -415,16 +439,50 @@ impl InnerService {
                     hyper::header::HeaderValue::from_name(hyper::header::ACCEPT_ENCODING),
                 );
             }
-        }
+            stream
+        } else {
+            // Set Content-Length only when body is not compressed,
+            // otherwise the client will get confused
+            // e.g. curl: (18) transfer closed with N bytes remaining to read
+            if let Some(content_length) = content_length {
+                res.headers_mut()
+                    .typed_insert(ContentLength(content_length));
+            }
+            body
+        };
 
         // Common headers
         res.headers_mut().typed_insert(AcceptRanges::bytes());
         res.headers_mut().typed_insert(ContentType::from(mime_type));
-        res.headers_mut()
-            .typed_insert(ContentLength(body.len() as u64));
 
-        *res.body_mut() = body.into();
+        *res.body_mut() = body;
         Ok(res)
+    }
+
+    fn compress_stream(
+        &self,
+        input: impl Stream<Item = io::Result<bytes::Bytes>> + std::marker::Send + 'static,
+        encoding: &str,
+    ) -> (hyper::Body, bool) {
+        let reader = StreamReader::new(input);
+        // async_compression does not provide common type or trait,
+        // we have no choice but compress and wrap with different algorithms separately
+        // ref: https://github.com/Nemo157/async-compression/issues/150
+        match encoding {
+            BR => (
+                Body::wrap_stream(ReaderStream::new(BrotliEncoder::new(reader))),
+                true,
+            ),
+            DEFLATE => (
+                Body::wrap_stream(ReaderStream::new(DeflateEncoder::new(reader))),
+                true,
+            ),
+            GZIP => (
+                Body::wrap_stream(ReaderStream::new(GzipEncoder::new(reader))),
+                true,
+            ),
+            _ => (Body::wrap_stream(ReaderStream::new(reader)), false),
+        }
     }
 
     fn guess_path_mime<P: AsRef<Path>>(path: P, action: Action) -> mime::Mime {

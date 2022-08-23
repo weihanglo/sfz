@@ -7,17 +7,30 @@
 // except according to those terms.
 
 use std::convert::AsRef;
-use std::fs::File;
-use std::io::{self, BufReader, Read, Seek, SeekFrom};
+use std::fs as std_fs;
+use std::io::{self, Seek};
+use std::ops::Range;
 use std::path::Path;
 
+use futures::Stream;
 use ignore::WalkBuilder;
+use once_cell::sync::OnceCell;
 use serde::Serialize;
+use sysinfo::{RefreshKind, System, SystemExt};
 use tera::{Context, Tera};
+use tokio::fs as tokio_fs;
+use tokio_util::io::ReaderStream;
 use zip::ZipWriter;
 
 use crate::extensions::PathExt;
 use crate::server::PathType;
+
+const BUFFER_MB_RANGE: Range<u64> = 1..16;
+
+fn get_sysinfo_collector() -> &'static System {
+    static INSTANCE: OnceCell<System> = OnceCell::new();
+    INSTANCE.get_or_init(|| System::new_with_specifics(RefreshKind::new().with_memory()))
+}
 
 /// Serializable `Item` that would be passed to Tera for template rendering.
 /// The order of struct fields is deremined to ensure sorting precedence.
@@ -65,7 +78,7 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     show_all: bool,
     with_ignore: bool,
     path_prefix: Option<&str>,
-) -> io::Result<Vec<u8>> {
+) -> io::Result<(impl Stream<Item = io::Result<bytes::Bytes>>, usize)> {
     let base_path = base_path.as_ref();
     let dir_path = dir_path.as_ref();
     // Prepare dirname of current dir relative to base path.
@@ -130,66 +143,69 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     // Sort files (dir-first and lexicographic ordering).
     files.sort_unstable();
 
-    Ok(render(dir_path.filename_str(), &files, &breadcrumbs).into())
+    let content: Vec<u8> = render(dir_path.filename_str(), &files, &breadcrumbs).into();
+    let size = content.len();
+    Ok((ReaderStream::new(io::Cursor::new(content)), size))
 }
 
-/// Send a buffer of file to client.
-pub fn send_file<P: AsRef<Path>>(file_path: P) -> io::Result<Vec<u8>> {
-    use std::io::prelude::*;
-    let f = File::open(file_path)?;
-    let mut buffer = Vec::new();
-    BufReader::new(f).read_to_end(&mut buffer)?;
-
-    Ok(buffer)
+/// Send a stream of file to client.
+pub async fn send_file<P: AsRef<Path>>(
+    file_path: P,
+) -> io::Result<(impl Stream<Item = io::Result<bytes::Bytes>>, u64)> {
+    let file = tokio_fs::File::open(file_path).await?;
+    let size = file.metadata().await?.len();
+    Ok((ReaderStream::new(file), size))
 }
 
 /// Sending a directory as zip buffer
-pub fn send_dir_as_zip<P: AsRef<Path>>(
+pub async fn send_dir_as_zip<P: AsRef<Path>>(
     dir_path: P,
     show_all: bool,
     with_ignore: bool,
-) -> io::Result<Vec<u8>> {
+) -> io::Result<(impl Stream<Item = io::Result<bytes::Bytes>>, u64)> {
     let dir_path = dir_path.as_ref();
 
     // Creating a memory buffer to make zip file
-    let mut zip_buffer = Vec::new();
-    let cursor = std::io::Cursor::new(&mut zip_buffer);
+    let mut file = tempfile::tempfile()?;
 
-    let mut zip_writer = ZipWriter::new(cursor);
-    let zip_options = zip::write::FileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored)
-        .unix_permissions(0o755);
+    {
+        let mut zip_writer = ZipWriter::new(&mut file);
+        let zip_options = zip::write::FileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored)
+            .unix_permissions(0o755);
 
-    // Recursively finding files and directories
-    let files_iter = get_dir_contents(dir_path, with_ignore, show_all, None)
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.path() != dir_path);
+        // Recursively finding files and directories
+        let files_iter = get_dir_contents(dir_path, with_ignore, show_all, None)
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.path() != dir_path);
 
-    for dir_entry in files_iter {
-        let file_path = dir_entry.path();
-        let name = file_path.strip_prefix(dir_path).unwrap().to_str().unwrap();
+        for dir_entry in files_iter {
+            let file_path = dir_entry.path();
+            let name = file_path.strip_prefix(dir_path).unwrap().to_str().unwrap();
 
-        if file_path.is_dir() {
-            zip_writer
-                .add_directory(name, zip_options)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        } else {
-            zip_writer
-                .start_file(name, zip_options)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-            let mut file = File::open(file_path)?;
-
-            std::io::copy(&mut file, &mut zip_writer)?;
+            if file_path.is_dir() {
+                zip_writer
+                    .add_directory(name, zip_options)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+            } else {
+                zip_writer
+                    .start_file(name, zip_options)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                let mut file = std_fs::File::open(file_path)?;
+                io::copy(&mut file, &mut zip_writer)?;
+            }
         }
+
+        zip_writer
+            .finish()
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     }
 
-    let mut zip = zip_writer
-        .finish()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    file.seek(io::SeekFrom::Start(0))?;
 
-    zip.seek(SeekFrom::Start(0))?;
-
-    zip.bytes().collect()
+    let size = file.metadata()?.len();
+    let stream = ReaderStream::new(tokio_fs::File::from_std(file));
+    Ok((stream, size))
 }
 
 /// Send a buffer with specific range.
@@ -198,22 +214,34 @@ pub fn send_dir_as_zip<P: AsRef<Path>>(
 ///
 /// * `file_path` - Path to the file that is going to send.
 /// * `range` - Tuple of `(start, end)` range (inclusive).
-pub fn send_file_with_range<P: AsRef<Path>>(
+pub async fn send_file_with_range<P: AsRef<Path>>(
     file_path: P,
     range: (u64, u64),
-) -> io::Result<Vec<u8>> {
-    use std::io::prelude::*;
+) -> io::Result<impl Stream<Item = io::Result<bytes::Bytes>>> {
+    use tokio::io::{AsyncReadExt, AsyncSeekExt, BufReader};
+
     let (start, end) = range; // TODO: should return HTTP 416
     if end < start {
         return Err(io::Error::from(io::ErrorKind::InvalidInput));
     }
-    let mut f = File::open(file_path)?;
+
+    let available_kb = get_sysinfo_collector().available_memory();
+    if available_kb < BUFFER_MB_RANGE.start {
+        return Err(io::Error::from(io::ErrorKind::OutOfMemory));
+    }
+
+    let mut f = tokio_fs::File::open(file_path).await?;
     let mut buffer = Vec::new();
-    f.seek(SeekFrom::Start(start))?;
+    f.seek(io::SeekFrom::Start(start)).await?;
+
+    let capacity = available_kb.clamp(BUFFER_MB_RANGE.start, BUFFER_MB_RANGE.end) * 1_024 * 1_024;
+    let capacity = capacity.clamp(0, end - start + 1);
     BufReader::new(f)
-        .take(end - start + 1)
-        .read_to_end(&mut buffer)?;
-    Ok(buffer)
+        .take(capacity)
+        .read_to_end(&mut buffer)
+        .await?;
+
+    Ok(ReaderStream::new(io::Cursor::new(buffer)))
 }
 
 /// Create breadcrumbs for navigation.
@@ -344,6 +372,10 @@ mod t {
 
 #[cfg(test)]
 mod t_send {
+    use std::marker;
+
+    use tokio_util::io::StreamReader;
+
     use super::*;
 
     fn file_txt_path() -> std::path::PathBuf {
@@ -368,63 +400,86 @@ mod t_send {
     #[test]
     fn t_send_dir() {}
 
-    #[test]
-    fn t_send_file_success() {
-        let buf = send_file(file_txt_path());
-        assert_eq!(&buf.unwrap(), b"01234567");
+    async fn vec_from_stream(
+        s: impl Stream<Item = io::Result<bytes::Bytes>> + marker::Unpin,
+    ) -> Vec<u8> {
+        use tokio::io::AsyncReadExt;
+
+        let mut buf = Vec::new();
+        StreamReader::new(s).read_to_end(&mut buf).await.unwrap();
+        buf
     }
 
-    #[test]
-    fn t_send_file_not_found() {
-        let buf = send_file(missing_file_path());
-        assert_eq!(buf.unwrap_err().kind(), std::io::ErrorKind::NotFound);
+    #[tokio::test]
+    async fn t_send_file_success() {
+        let (s, size) = send_file(file_txt_path()).await.unwrap();
+        assert!(size > 0);
+
+        let v = vec_from_stream(s).await;
+        assert_eq!(v, b"01234567");
     }
 
-    #[test]
-    fn t_send_file_with_range_one_byte() {
+    #[tokio::test]
+    async fn t_send_file_not_found() {
+        let buf = send_file(missing_file_path()).await;
+        assert_eq!(buf.err().unwrap().kind(), io::ErrorKind::NotFound);
+    }
+
+    #[tokio::test]
+    async fn t_send_file_with_range_one_byte() {
         for i in 0..=7 {
-            let buf = send_file_with_range(file_txt_path(), (i, i));
-            assert_eq!(buf.unwrap(), i.to_string().as_bytes());
+            let s = send_file_with_range(file_txt_path(), (i, i)).await;
+            let v = vec_from_stream(s.unwrap()).await;
+            assert_eq!(v, i.to_string().as_bytes());
         }
     }
 
-    #[test]
-    fn t_send_file_with_range_multiple_bytes() {
-        let buf = send_file_with_range(file_txt_path(), (0, 1));
-        assert_eq!(buf.unwrap(), b"01");
-        let buf = send_file_with_range(file_txt_path(), (1, 2));
-        assert_eq!(buf.unwrap(), b"12");
-        let buf = send_file_with_range(file_txt_path(), (1, 4));
-        assert_eq!(buf.unwrap(), b"1234");
-        let buf = send_file_with_range(file_txt_path(), (7, 65535));
-        assert_eq!(buf.unwrap(), b"7");
-        let buf = send_file_with_range(file_txt_path(), (8, 8));
-        assert_eq!(buf.unwrap(), b"");
+    #[tokio::test]
+    async fn t_send_file_with_range_multiple_bytes() {
+        let s = send_file_with_range(file_txt_path(), (0, 1)).await;
+        let v = vec_from_stream(s.unwrap()).await;
+        assert_eq!(v, b"01");
+        let s = send_file_with_range(file_txt_path(), (1, 2)).await;
+        let v = vec_from_stream(s.unwrap()).await;
+        assert_eq!(v, b"12");
+        let s = send_file_with_range(file_txt_path(), (1, 4)).await;
+        let v = vec_from_stream(s.unwrap()).await;
+        assert_eq!(v, b"1234");
+        let s = send_file_with_range(file_txt_path(), (7, 65535)).await;
+        let v = vec_from_stream(s.unwrap()).await;
+        assert_eq!(v, b"7");
+        let s = send_file_with_range(file_txt_path(), (8, 8)).await;
+        let v = vec_from_stream(s.unwrap()).await;
+        assert_eq!(v, b"");
     }
 
-    #[test]
-    fn t_send_file_with_range_not_found() {
-        let buf = send_file_with_range(missing_file_path(), (0, 0));
-        assert_eq!(buf.unwrap_err().kind(), std::io::ErrorKind::NotFound);
+    #[tokio::test]
+    async fn t_send_file_with_range_not_found() {
+        let buf = send_file_with_range(missing_file_path(), (0, 0)).await;
+        assert_eq!(buf.err().unwrap().kind(), io::ErrorKind::NotFound);
     }
 
-    #[test]
-    fn t_send_file_with_range_invalid_range() {
+    #[tokio::test]
+    async fn t_send_file_with_range_invalid_range() {
         // TODO: HTTP code 416
-        let buf = send_file_with_range(file_txt_path(), (1, 0));
-        assert_eq!(buf.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+        let buf = send_file_with_range(file_txt_path(), (1, 0)).await;
+        assert_eq!(buf.err().unwrap().kind(), io::ErrorKind::InvalidInput);
     }
 
-    #[test]
-    fn t_send_dir_as_zip() {
-        let buf = send_dir_as_zip(dir_with_sub_dir_path(), true, false);
+    #[tokio::test]
+    async fn t_send_dir_as_zip() {
+        use bytes::Buf;
+        use futures::StreamExt;
+        use std::io::Read;
 
-        assert_eq!(buf.is_ok(), true);
+        let (mut stream, size) = send_dir_as_zip(dir_with_sub_dir_path(), true, false)
+            .await
+            .unwrap();
+        assert!(size > 0);
 
-        let buf = buf.unwrap();
-
-        assert_eq!(buf.len() > 0, true);
-
+        let mut buf: [u8; 4] = [0; 4];
+        let mut reader = stream.next().await.unwrap().unwrap().reader();
+        reader.read_exact(&mut buf).unwrap();
         // https://users.cs.jmu.edu/buchhofp/forensics/formats/pkzip.html#localheader
         assert_eq!(&buf[0..4], &[0x50, 0x4b, 0x03, 0x04]);
     }
