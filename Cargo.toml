@@ -17,7 +17,12 @@ edition = "2021"
 # Command-line
 clap = { version = "3", default-features = false, features = ["std", "cargo"] }
 # Server
-tokio = { version = "1", features = ["fs", "macros", "io-util", "rt"] }
+tokio = { version = "1", features = [
+  "fs",
+  "macros",
+  "io-util",
+  "rt-multi-thread",
+] }
 tokio-util = { version = "0.7", features = ["io"] }
 hyper = { version = "0.14", features = ["http1", "server", "stream", "tcp"] }
 headers = "0.3"

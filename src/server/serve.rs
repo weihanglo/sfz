@@ -11,7 +11,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::str::Utf8Error;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_compression::tokio::bufread::{BrotliEncoder, DeflateEncoder, GzipEncoder};
 use chrono::Local;
@@ -104,19 +104,22 @@ impl InnerService {
     }
 
     pub async fn call(self: Arc<Self>, req: Request) -> Result<Response, hyper::Error> {
+        let i = Instant::now();
         let res = self
             .handle_request(&req)
             .await
             .unwrap_or_else(|_| res::internal_server_error(Response::default()));
+        let duration = Instant::now() - i;
         // Logging
         // TODO: use proper logging crate
         if self.args.log {
             println!(
-                r#"[{}] "{} {}" - {}"#,
+                r#"[{}] "{} {}" - {} {}ms"#,
                 Local::now().format("%d/%b/%Y %H:%M:%S"),
                 req.method(),
                 req.uri(),
                 res.status(),
+                duration.as_millis()
             );
         }
         // Returning response
