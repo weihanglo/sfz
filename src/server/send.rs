@@ -10,7 +10,11 @@ use std::convert::AsRef;
 use std::fs::File;
 use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
+use std::pin::Pin;
+use std::sync::Mutex;
+use std::task::Poll;
 
+use futures::Stream;
 use ignore::WalkBuilder;
 use serde::Serialize;
 use tera::{Context, Tera};
@@ -65,7 +69,7 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     show_all: bool,
     with_ignore: bool,
     path_prefix: Option<&str>,
-) -> io::Result<Vec<u8>> {
+) -> io::Result<(Vec<u8>, usize)> {
     let base_path = base_path.as_ref();
     let dir_path = dir_path.as_ref();
     // Prepare dirname of current dir relative to base path.
@@ -130,17 +134,50 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     // Sort files (dir-first and lexicographic ordering).
     files.sort_unstable();
 
-    Ok(render(dir_path.filename_str(), &files, &breadcrumbs).into())
+    let content = render(dir_path.filename_str(), &files, &breadcrumbs).into_bytes();
+    let size = content.len();
+    Ok((content, size))
 }
 
-/// Send a buffer of file to client.
-pub fn send_file<P: AsRef<Path>>(file_path: P) -> io::Result<Vec<u8>> {
-    use std::io::prelude::*;
-    let f = File::open(file_path)?;
-    let mut buffer = Vec::new();
-    BufReader::new(f).read_to_end(&mut buffer)?;
+const BUFFER_SIZE: usize = 4_096;
 
-    Ok(buffer)
+#[derive(Debug)]
+pub struct FileStream<T> {
+    reader: Mutex<T>,
+}
+
+impl<T: Read> Stream for FileStream<T> {
+    type Item = io::Result<hyper::body::Bytes>;
+
+    fn poll_next(self: Pin<&mut Self>, _: &mut std::task::Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut r = match self.reader.lock() {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("{e:?}");
+                let e = io::Error::new(io::ErrorKind::Other, "Failed to read file");
+                return Poll::Ready(Some(Err(e)));
+            }
+        };
+        let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+        match r.read(&mut buf) {
+            Ok(bytes) => {
+                if bytes == 0 {
+                    Poll::Ready(None)
+                } else {
+                    Poll::Ready(Some(Ok(hyper::body::Bytes::from(buf[0..bytes].to_vec()))))
+                }
+            }
+            Err(e) => Poll::Ready(Some(Err(e))),
+        }
+    }
+}
+
+/// Send a stream of file to client.
+pub fn send_file<P: AsRef<Path>>(file_path: P) -> io::Result<(FileStream<BufReader<File>>, u64)> {
+    let file = File::open(file_path)?;
+    let size = file.metadata()?.len();
+    let reader = Mutex::new(BufReader::new(file));
+    Ok((FileStream { reader }, size))
 }
 
 /// Sending a directory as zip buffer
@@ -148,14 +185,13 @@ pub fn send_dir_as_zip<P: AsRef<Path>>(
     dir_path: P,
     show_all: bool,
     with_ignore: bool,
-) -> io::Result<Vec<u8>> {
+) -> io::Result<(FileStream<BufReader<File>>, u64)> {
     let dir_path = dir_path.as_ref();
 
     // Creating a memory buffer to make zip file
-    let mut zip_buffer = Vec::new();
-    let cursor = std::io::Cursor::new(&mut zip_buffer);
+    let zip_file = tempfile::tempfile()?;
+    let mut zip_writer = ZipWriter::new(zip_file);
 
-    let mut zip_writer = ZipWriter::new(cursor);
     let zip_options = zip::write::FileOptions::default()
         .compression_method(zip::CompressionMethod::Stored)
         .unix_permissions(0o755);
@@ -189,10 +225,12 @@ pub fn send_dir_as_zip<P: AsRef<Path>>(
 
     zip.seek(SeekFrom::Start(0))?;
 
-    zip.bytes().collect()
+    let size = zip.metadata()?.len();
+    let reader = Mutex::new(BufReader::new(zip));
+    Ok((FileStream { reader }, size))
 }
 
-/// Send a buffer with specific range.
+/// Send a stream with specific range.
 ///
 /// # Parameters
 ///
@@ -201,19 +239,17 @@ pub fn send_dir_as_zip<P: AsRef<Path>>(
 pub fn send_file_with_range<P: AsRef<Path>>(
     file_path: P,
     range: (u64, u64),
-) -> io::Result<Vec<u8>> {
-    use std::io::prelude::*;
+) -> io::Result<FileStream<std::io::Take<BufReader<File>>>> {
     let (start, end) = range; // TODO: should return HTTP 416
     if end < start {
         return Err(io::Error::from(io::ErrorKind::InvalidInput));
     }
+
     let mut f = File::open(file_path)?;
-    let mut buffer = Vec::new();
     f.seek(SeekFrom::Start(start))?;
-    BufReader::new(f)
-        .take(end - start + 1)
-        .read_to_end(&mut buffer)?;
-    Ok(buffer)
+
+    let reader = Mutex::new(BufReader::new(f).take(end - start + 1));
+    Ok(FileStream { reader })
 }
 
 /// Create breadcrumbs for navigation.
@@ -344,6 +380,8 @@ mod t {
 
 #[cfg(test)]
 mod t_send {
+    use futures::StreamExt;
+
     use super::*;
 
     fn file_txt_path() -> std::path::PathBuf {
@@ -368,10 +406,23 @@ mod t_send {
     #[test]
     fn t_send_dir() {}
 
-    #[test]
-    fn t_send_file_success() {
-        let buf = send_file(file_txt_path());
-        assert_eq!(&buf.unwrap(), b"01234567");
+    async fn stream_to_vec<T: Read + std::marker::Unpin>(mut s: FileStream<T>) -> Vec<u8> {
+        let mut buf = vec![];
+        while let Some(r) = s.next().await {
+            if let Ok(b) = r {
+                buf.extend_from_slice(&b);
+            }
+        }
+        buf
+    }
+
+    #[tokio::test]
+    async fn t_send_file_success() {
+        let (s, size) = send_file(file_txt_path()).unwrap();
+        assert!(size > 0);
+
+        let buf = stream_to_vec(s).await;
+        assert_eq!(&buf, b"01234567");
     }
 
     #[test]
@@ -380,26 +431,32 @@ mod t_send {
         assert_eq!(buf.unwrap_err().kind(), std::io::ErrorKind::NotFound);
     }
 
-    #[test]
-    fn t_send_file_with_range_one_byte() {
+    #[tokio::test]
+    async fn t_send_file_with_range_one_byte() {
         for i in 0..=7 {
-            let buf = send_file_with_range(file_txt_path(), (i, i));
-            assert_eq!(buf.unwrap(), i.to_string().as_bytes());
+            let s = send_file_with_range(file_txt_path(), (i, i)).unwrap();
+            let buf = stream_to_vec(s).await;
+            assert_eq!(buf, i.to_string().as_bytes());
         }
     }
 
-    #[test]
-    fn t_send_file_with_range_multiple_bytes() {
-        let buf = send_file_with_range(file_txt_path(), (0, 1));
-        assert_eq!(buf.unwrap(), b"01");
-        let buf = send_file_with_range(file_txt_path(), (1, 2));
-        assert_eq!(buf.unwrap(), b"12");
-        let buf = send_file_with_range(file_txt_path(), (1, 4));
-        assert_eq!(buf.unwrap(), b"1234");
-        let buf = send_file_with_range(file_txt_path(), (7, 65535));
-        assert_eq!(buf.unwrap(), b"7");
-        let buf = send_file_with_range(file_txt_path(), (8, 8));
-        assert_eq!(buf.unwrap(), b"");
+    #[tokio::test]
+    async fn t_send_file_with_range_multiple_bytes() {
+        let s = send_file_with_range(file_txt_path(), (0, 1)).unwrap();
+        let buf = stream_to_vec(s).await;
+        assert_eq!(buf, b"01");
+        let s = send_file_with_range(file_txt_path(), (1, 2)).unwrap();
+        let buf = stream_to_vec(s).await;
+        assert_eq!(buf, b"12");
+        let s = send_file_with_range(file_txt_path(), (1, 4)).unwrap();
+        let buf = stream_to_vec(s).await;
+        assert_eq!(buf, b"1234");
+        let s = send_file_with_range(file_txt_path(), (7, 65535)).unwrap();
+        let buf = stream_to_vec(s).await;
+        assert_eq!(buf, b"7");
+        let s = send_file_with_range(file_txt_path(), (8, 8)).unwrap();
+        let buf = stream_to_vec(s).await;
+        assert_eq!(buf, b"");
     }
 
     #[test]
@@ -415,17 +472,18 @@ mod t_send {
         assert_eq!(buf.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
     }
 
-    #[test]
-    fn t_send_dir_as_zip() {
-        let buf = send_dir_as_zip(dir_with_sub_dir_path(), true, false);
+    #[tokio::test]
+    async fn t_send_dir_as_zip() {
+        let s = send_dir_as_zip(dir_with_sub_dir_path(), true, false);
+        assert!(s.is_ok());
 
-        assert_eq!(buf.is_ok(), true);
+        let (s, size) = s.unwrap();
+        assert!(size > 0);
 
-        let buf = buf.unwrap();
-
-        assert_eq!(buf.len() > 0, true);
+        let v = stream_to_vec(s).await;
+        assert!(v.len() > 0);
 
         // https://users.cs.jmu.edu/buchhofp/forensics/formats/pkzip.html#localheader
-        assert_eq!(&buf[0..4], &[0x50, 0x4b, 0x03, 0x04]);
+        assert_eq!(&v[0..4], &[0x50, 0x4b, 0x03, 0x04]);
     }
 }

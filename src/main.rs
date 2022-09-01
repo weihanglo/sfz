@@ -24,7 +24,7 @@ use crate::server::serve;
 
 pub type BoxResult<T> = Result<T, Box<dyn std::error::Error>>;
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() {
     Args::parse(matches())
         .map(serve)
