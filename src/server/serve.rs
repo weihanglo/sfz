@@ -6,22 +6,26 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::convert::{AsRef, Infallible};
+use std::convert::AsRef;
+use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::str::Utf8Error;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use chrono::Local;
+use futures::{StreamExt, TryStreamExt};
 use headers::{
     AcceptRanges, AccessControlAllowHeaders, AccessControlAllowOrigin, CacheControl, ContentLength,
     ContentType, ETag, HeaderMapExt, LastModified, Range, Server,
 };
 // Can not use headers::ContentDisposition. Because of https://github.com/hyperium/headers/issues/8
 use hyper::header::{HeaderValue, CONTENT_DISPOSITION};
-use hyper::service::{make_service_fn, service_fn};
-use hyper::StatusCode;
+use hyper::service::Service;
+use hyper::{Body, StatusCode};
 use ignore::gitignore::Gitignore;
 use mime_guess::mime;
 use percent_encoding::percent_decode;
@@ -31,8 +35,9 @@ use serde::Serialize;
 use crate::cli::Args;
 use crate::extensions::{MimeExt, PathExt, SystemTimeExt};
 use crate::http::conditional_requests::{is_fresh, is_precondition_failed};
-use crate::http::content_encoding::{compress, get_prior_encoding};
+use crate::http::content_encoding::{compress, encoding_to_static_str, get_prior_encoding};
 use crate::http::range_requests::{is_range_fresh, is_satisfiable_range};
+use crate::http::{BR, DEFLATE, GZIP};
 use crate::server::send::{send_dir, send_dir_as_zip, send_file, send_file_with_range};
 use crate::server::{res, Request, Response};
 use crate::BoxResult;
@@ -53,25 +58,49 @@ pub enum PathType {
     SymlinkFile,
 }
 
+#[derive(Clone)]
+struct MakeService {
+    args: Arc<Args>,
+    gitignore: Arc<Gitignore>,
+}
+
+impl<T> Service<T> for MakeService {
+    type Response = InnerService;
+    type Error = hyper::Error;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _: &mut Context) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, _: T) -> Self::Future {
+        let args = self.args.clone();
+        let gitignore = self.gitignore.clone();
+        let fut = async move { Ok(InnerService { args, gitignore }) };
+        Box::pin(fut)
+    }
+}
+
+impl MakeService {
+    pub fn new(args: Args) -> Self {
+        let args = Arc::new(args);
+        let gitignore = Arc::new(Gitignore::new(args.path.join(".gitignore")).0);
+        Self { args, gitignore }
+    }
+}
+
 /// Run the server.
 pub async fn serve(args: Args) -> BoxResult<()> {
     let address = args.address()?;
     let path_prefix = args.path_prefix.clone().unwrap_or_default();
-    let inner = Arc::new(InnerService::new(args));
-    let make_svc = make_service_fn(move |_| {
-        let inner = inner.clone();
-        async {
-            Ok::<_, Infallible>(service_fn(move |req| {
-                let inner = inner.clone();
-                inner.call(req)
-            }))
-        }
-    });
 
-    let server = hyper::Server::try_bind(&address)?.serve(make_svc);
+    let server = hyper::Server::bind(&address).serve(MakeService::new(args));
     let address = server.local_addr();
-    eprintln!("Files served on http://{}{}", address, path_prefix);
-    server.await?;
+    eprintln!("Files served on http://{address}{path_prefix}");
+
+    if let Err(e) = server.await {
+        eprintln!("Server error: {e:?}");
+    };
 
     Ok(())
 }
@@ -83,34 +112,58 @@ enum Action {
     DownloadFile,
 }
 
+#[derive(Clone)]
 struct InnerService {
-    args: Args,
-    gitignore: Gitignore,
+    args: Arc<Args>,
+    gitignore: Arc<Gitignore>,
+}
+
+impl Service<Request> for InnerService {
+    type Response = Response;
+    type Error = hyper::Error;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, req: Request) -> Self::Future {
+        let log = self.args.log;
+
+        let method = req.method().clone();
+        let uri = req.uri().clone();
+
+        let inner = self.clone();
+        let fut = async move {
+            let res = inner.handle_request(req).await;
+            res.map(|res| {
+                // Logging
+                // TODO: use proper logging crate
+                if log {
+                    println!(
+                        r#"[{}] "{} {}" - {}"#,
+                        Local::now().format("%d/%b/%Y %H:%M:%S"),
+                        method,
+                        uri,
+                        res.status(),
+                    );
+                }
+                res
+            })
+            .or_else(|e| {
+                eprintln!("{e:?}");
+                Ok(res::internal_server_error(Response::default()))
+            })
+        };
+        Box::pin(fut)
+    }
 }
 
 impl InnerService {
     pub fn new(args: Args) -> Self {
-        let gitignore = Gitignore::new(args.path.join(".gitignore")).0;
+        let args = Arc::new(args);
+        let gitignore = Arc::new(Gitignore::new(args.path.join(".gitignore")).0);
         Self { args, gitignore }
-    }
-
-    pub async fn call(self: Arc<Self>, req: Request) -> Result<Response, hyper::Error> {
-        let res = self
-            .handle_request(&req)
-            .unwrap_or_else(|_| res::internal_server_error(Response::default()));
-        // Logging
-        // TODO: use proper logging crate
-        if self.args.log {
-            println!(
-                r#"[{}] "{} {}" - {}"#,
-                Local::now().format("%d/%b/%Y %H:%M:%S"),
-                req.method(),
-                req.uri(),
-                res.status(),
-            );
-        }
-        // Returning response
-        Ok(res)
     }
 
     /// Construct file path from request path.
@@ -256,7 +309,7 @@ impl InnerService {
     }
 
     /// Request handler for `MyService`.
-    fn handle_request(&self, req: &Request) -> BoxResult<Response> {
+    async fn handle_request(&self, req: Request) -> BoxResult<Response> {
         // Construct response.
         let mut res = Response::default();
         res.headers_mut()
@@ -313,18 +366,21 @@ impl InnerService {
 
         // Prepare response body.
         // Being mutable for further modifications.
-        let mut body: io::Result<Vec<u8>> = Ok(Vec::new());
+        let mut body = Body::empty();
+        let mut content_length: Option<u64> = None;
 
         // Extra process for serving files.
         match action {
             Action::ListDir => {
-                body = send_dir(
+                let (content, size) = send_dir(
                     &path,
                     &self.args.path,
                     self.args.all,
                     self.args.ignore,
                     self.args.path_prefix.as_deref(),
-                );
+                )?;
+                body = Body::from(content);
+                content_length = Some(size as u64);
             }
             Action::DownloadFile => {
                 // Cache-Control.
@@ -340,12 +396,12 @@ impl InnerService {
                     .unwrap();
 
                 // Validate preconditions of conditional requests.
-                if is_precondition_failed(req, &etag, mtime) {
+                if is_precondition_failed(&req, &etag, mtime) {
                     return Ok(res::precondition_failed(res));
                 }
 
                 // Validate cache freshness.
-                if is_fresh(req, &etag, mtime) {
+                if is_fresh(&req, &etag, mtime) {
                     res.headers_mut().typed_insert(last_modified);
                     res.headers_mut().typed_insert(etag);
                     return Ok(res::not_modified(res));
@@ -355,13 +411,14 @@ impl InnerService {
                 if let Some(range) = req.headers().typed_get::<Range>() {
                     #[allow(clippy::single_match)]
                     match (
-                        is_range_fresh(req, &etag, &last_modified),
+                        is_range_fresh(&req, &etag, &last_modified),
                         is_satisfiable_range(&range, size as u64),
                     ) {
                         (true, Some(content_range)) => {
                             // 206 Partial Content.
                             if let Some(range) = content_range.bytes_range() {
-                                body = send_file_with_range(&path, range);
+                                let stream = send_file_with_range(&path, range)?;
+                                body = Body::wrap_stream(stream);
                             }
                             res.headers_mut().typed_insert(content_range);
                             *res.status_mut() = StatusCode::PARTIAL_CONTENT;
@@ -373,13 +430,17 @@ impl InnerService {
                 }
 
                 if res.status() != StatusCode::PARTIAL_CONTENT {
-                    body = send_file(&path);
+                    let (stream, size) = send_file(&path)?;
+                    body = Body::wrap_stream(stream);
+                    content_length = Some(size);
                 }
                 res.headers_mut().typed_insert(last_modified);
                 res.headers_mut().typed_insert(etag);
             }
             Action::DownloadZip => {
-                body = send_dir_as_zip(&path, self.args.all, self.args.ignore);
+                let (stream, size) = send_dir_as_zip(&path, self.args.all, self.args.ignore)?;
+                body = Body::wrap_stream(stream);
+                content_length = Some(size);
 
                 // Changing the filename
                 res.headers_mut().insert(
@@ -393,37 +454,54 @@ impl InnerService {
             }
         }
 
-        let mut body = body?;
         let mime_type = InnerService::guess_path_mime(&path, action);
 
-        if self.can_compress(res.status(), &mime_type) {
-            let encoding = res
+        let body = if self.can_compress(res.status(), &mime_type) {
+            let encoding = req
                 .headers()
                 .get(hyper::header::ACCEPT_ENCODING)
                 .map(get_prior_encoding)
                 .unwrap_or_default();
-            // No Accept-Encoding would not be compress.
-            if let Ok(buf) = compress(&body, encoding) {
-                body = buf;
-                res.headers_mut().insert(
-                    hyper::header::CONTENT_ENCODING,
-                    hyper::header::HeaderValue::from_static(encoding),
-                );
-                // Representation varies, so responds with a `Vary` header.
-                res.headers_mut().insert(
-                    hyper::header::VARY,
-                    hyper::header::HeaderValue::from_name(hyper::header::ACCEPT_ENCODING),
-                );
+            let enc = encoding_to_static_str(encoding);
+            match enc {
+                BR | DEFLATE | GZIP => {
+                    let body = Body::wrap_stream(
+                        body.map_err(|_e| io::Error::from(io::ErrorKind::InvalidData))
+                            .map(move |b| match b {
+                                Ok(b) => compress(&b, enc),
+                                Err(e) => Err(e),
+                            }),
+                    );
+                    res.headers_mut().insert(
+                        hyper::header::CONTENT_ENCODING,
+                        hyper::header::HeaderValue::from_static(encoding),
+                    );
+                    // Representation varies, so responds with a `Vary` header.
+                    res.headers_mut().insert(
+                        hyper::header::VARY,
+                        hyper::header::HeaderValue::from_name(hyper::header::ACCEPT_ENCODING),
+                    );
+                    body
+                }
+                // No Accept-Encoding would not be compress.
+                _ => body,
             }
-        }
+        } else {
+            // Set Content-Length only when body is not compressed,
+            // otherwise the client will get confused
+            // e.g. curl: (18) transfer closed with N bytes remaining to read
+            if let Some(content_length) = content_length {
+                res.headers_mut()
+                    .typed_insert(ContentLength(content_length));
+            }
+            body
+        };
 
         // Common headers
         res.headers_mut().typed_insert(AcceptRanges::bytes());
         res.headers_mut().typed_insert(ContentType::from(mime_type));
-        res.headers_mut()
-            .typed_insert(ContentLength(body.len() as u64));
 
-        *res.body_mut() = body.into();
+        *res.body_mut() = body;
         Ok(res)
     }
 

@@ -9,3 +9,8 @@
 pub mod conditional_requests;
 pub mod content_encoding;
 pub mod range_requests;
+
+pub const IDENTITY: &str = "identity";
+pub const DEFLATE: &str = "deflate";
+pub const GZIP: &str = "gzip";
+pub const BR: &str = "br";

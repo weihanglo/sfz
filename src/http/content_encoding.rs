@@ -7,16 +7,15 @@
 // except according to those terms.
 
 use std::cmp::Ordering;
-use std::io::{self, BufReader};
+use std::io::{self, Read};
 
-use flate2::read::{DeflateEncoder, GzEncoder};
-use flate2::Compression;
+use flate2::{
+    bufread::{DeflateEncoder, GzEncoder},
+    Compression,
+};
 use hyper::header::HeaderValue;
 
-const IDENTITY: &str = "identity";
-const DEFLATE: &str = "deflate";
-const GZIP: &str = "gzip";
-const BR: &str = "br";
+use crate::http::{BR, DEFLATE, GZIP, IDENTITY};
 
 /// Inner helper type to store quality values.
 ///
@@ -46,7 +45,7 @@ impl From<&str> for Encoding {
 }
 
 /// This match expression is necessary to return a `&'static str`.
-fn encoding_to_static_str<'a>(encoding: &'a str) -> &'static str {
+pub fn encoding_to_static_str<'a>(encoding: &'a str) -> &'static str {
     match encoding {
         DEFLATE => DEFLATE,
         GZIP => GZIP,
@@ -129,18 +128,18 @@ pub fn get_prior_encoding<'a>(accept_encoding: &'a HeaderValue) -> &'static str 
 /// * `data` - Data to be compressed.
 /// * `encoding` - Only support `br`, `gzip`, `deflate` and `identity`.
 pub fn compress(data: &[u8], encoding: &str) -> io::Result<Vec<u8>> {
-    use std::io::prelude::*;
     let mut buf = Vec::new();
     match encoding {
         BR => {
-            BufReader::new(brotli::CompressorReader::new(data, 4096, 6, 20))
+            io::BufReader::new(brotli::CompressorReader::new(data, 4096, 6, 20))
                 .read_to_end(&mut buf)?;
         }
         GZIP => {
-            BufReader::new(GzEncoder::new(data, Compression::default())).read_to_end(&mut buf)?;
+            io::BufReader::new(GzEncoder::new(data, Compression::default()))
+                .read_to_end(&mut buf)?;
         }
         DEFLATE => {
-            BufReader::new(DeflateEncoder::new(data, Compression::default()))
+            io::BufReader::new(DeflateEncoder::new(data, Compression::default()))
                 .read_to_end(&mut buf)?;
         }
         _ => return Err(io::Error::new(io::ErrorKind::Other, "Unsupported Encoding")),
