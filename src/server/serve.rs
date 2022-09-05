@@ -7,13 +7,10 @@
 // except according to those terms.
 
 use std::convert::AsRef;
-use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
 use std::str::Utf8Error;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 use std::time::Duration;
 
 use chrono::Local;
@@ -24,7 +21,7 @@ use headers::{
 };
 // Can not use headers::ContentDisposition. Because of https://github.com/hyperium/headers/issues/8
 use hyper::header::{HeaderValue, CONTENT_DISPOSITION};
-use hyper::service::Service;
+use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, StatusCode};
 use ignore::gitignore::Gitignore;
 use mime_guess::mime;
@@ -58,43 +55,22 @@ pub enum PathType {
     SymlinkFile,
 }
 
-#[derive(Clone)]
-struct MakeService {
-    args: Arc<Args>,
-    gitignore: Arc<Gitignore>,
-}
-
-impl<T> Service<T> for MakeService {
-    type Response = InnerService;
-    type Error = hyper::Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-    fn poll_ready(&mut self, _: &mut Context) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, _: T) -> Self::Future {
-        let args = self.args.clone();
-        let gitignore = self.gitignore.clone();
-        let fut = async move { Ok(InnerService { args, gitignore }) };
-        Box::pin(fut)
-    }
-}
-
-impl MakeService {
-    pub fn new(args: Args) -> Self {
-        let args = Arc::new(args);
-        let gitignore = Arc::new(Gitignore::new(args.path.join(".gitignore")).0);
-        Self { args, gitignore }
-    }
-}
-
 /// Run the server.
 pub async fn serve(args: Args) -> BoxResult<()> {
     let address = args.address()?;
     let path_prefix = args.path_prefix.clone().unwrap_or_default();
 
-    let server = hyper::Server::bind(&address).serve(MakeService::new(args));
+    let inner = Arc::new(InnerService::new(args));
+    let make_svc = make_service_fn(move |_| {
+        let inner = inner.clone();
+        async {
+            Ok::<_, hyper::Error>(service_fn(move |req| {
+                let inner = inner.clone();
+                inner.call(req)
+            }))
+        }
+    });
+    let server = hyper::Server::bind(&address).serve(make_svc);
     let address = server.local_addr();
     eprintln!("Files served on http://{address}{path_prefix}");
 
@@ -112,58 +88,35 @@ enum Action {
     DownloadFile,
 }
 
-#[derive(Clone)]
 struct InnerService {
-    args: Arc<Args>,
-    gitignore: Arc<Gitignore>,
-}
-
-impl Service<Request> for InnerService {
-    type Response = Response;
-    type Error = hyper::Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, req: Request) -> Self::Future {
-        let log = self.args.log;
-
-        let method = req.method().clone();
-        let uri = req.uri().clone();
-
-        let inner = self.clone();
-        let fut = async move {
-            let res = inner.handle_request(req).await;
-            res.map(|res| {
-                // Logging
-                // TODO: use proper logging crate
-                if log {
-                    println!(
-                        r#"[{}] "{} {}" - {}"#,
-                        Local::now().format("%d/%b/%Y %H:%M:%S"),
-                        method,
-                        uri,
-                        res.status(),
-                    );
-                }
-                res
-            })
-            .or_else(|e| {
-                eprintln!("{e:?}");
-                Ok(res::internal_server_error(Response::default()))
-            })
-        };
-        Box::pin(fut)
-    }
+    args: Args,
+    gitignore: Gitignore,
 }
 
 impl InnerService {
     pub fn new(args: Args) -> Self {
-        let args = Arc::new(args);
-        let gitignore = Arc::new(Gitignore::new(args.path.join(".gitignore")).0);
+        let gitignore = Gitignore::new(args.path.join(".gitignore")).0;
         Self { args, gitignore }
+    }
+
+    pub async fn call(self: Arc<Self>, req: Request) -> Result<Response, hyper::Error> {
+        let res = self
+            .handle_request(&req)
+            .await
+            .unwrap_or_else(|_| res::internal_server_error(Response::default()));
+        // Logging
+        // TODO: use proper logging crate
+        if self.args.log {
+            println!(
+                r#"[{}] "{} {}" - {}"#,
+                Local::now().format("%d/%b/%Y %H:%M:%S"),
+                req.method(),
+                req.uri(),
+                res.status(),
+            );
+        }
+        // Returning response
+        Ok(res)
     }
 
     /// Construct file path from request path.
@@ -309,7 +262,7 @@ impl InnerService {
     }
 
     /// Request handler for `MyService`.
-    async fn handle_request(&self, req: Request) -> BoxResult<Response> {
+    async fn handle_request(&self, req: &Request) -> BoxResult<Response> {
         // Construct response.
         let mut res = Response::default();
         res.headers_mut()
@@ -396,12 +349,12 @@ impl InnerService {
                     .unwrap();
 
                 // Validate preconditions of conditional requests.
-                if is_precondition_failed(&req, &etag, mtime) {
+                if is_precondition_failed(req, &etag, mtime) {
                     return Ok(res::precondition_failed(res));
                 }
 
                 // Validate cache freshness.
-                if is_fresh(&req, &etag, mtime) {
+                if is_fresh(req, &etag, mtime) {
                     res.headers_mut().typed_insert(last_modified);
                     res.headers_mut().typed_insert(etag);
                     return Ok(res::not_modified(res));
@@ -411,7 +364,7 @@ impl InnerService {
                 if let Some(range) = req.headers().typed_get::<Range>() {
                     #[allow(clippy::single_match)]
                     match (
-                        is_range_fresh(&req, &etag, &last_modified),
+                        is_range_fresh(req, &etag, &last_modified),
                         is_satisfiable_range(&range, size as u64),
                     ) {
                         (true, Some(content_range)) => {
