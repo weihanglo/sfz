@@ -139,8 +139,6 @@ pub fn send_dir<P1: AsRef<Path>, P2: AsRef<Path>>(
     Ok((content, size))
 }
 
-const BUFFER_SIZE: usize = 4_096;
-
 #[derive(Debug)]
 pub struct FileStream<T> {
     reader: Mutex<T>,
@@ -158,7 +156,7 @@ impl<T: Read> Stream for FileStream<T> {
                 return Poll::Ready(Some(Err(e)));
             }
         };
-        let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+        let mut buf = [0u8; 4_096];
         match r.read(&mut buf) {
             Ok(bytes) => {
                 if bytes == 0 {
@@ -188,7 +186,7 @@ pub fn send_dir_as_zip<P: AsRef<Path>>(
 ) -> io::Result<(FileStream<BufReader<File>>, u64)> {
     let dir_path = dir_path.as_ref();
 
-    // Creating a memory buffer to make zip file
+    // Creating a temporary file to make zip file
     let zip_file = tempfile::tempfile()?;
     let mut zip_writer = ZipWriter::new(zip_file);
 
@@ -239,17 +237,23 @@ pub fn send_dir_as_zip<P: AsRef<Path>>(
 pub fn send_file_with_range<P: AsRef<Path>>(
     file_path: P,
     range: (u64, u64),
-) -> io::Result<FileStream<std::io::Take<BufReader<File>>>> {
+) -> io::Result<(FileStream<std::io::Take<BufReader<File>>>, u64)> {
     let (start, end) = range; // TODO: should return HTTP 416
     if end < start {
         return Err(io::Error::from(io::ErrorKind::InvalidInput));
     }
 
     let mut f = File::open(file_path)?;
+    let max_end = f.metadata()?.len() - 1;
     f.seek(SeekFrom::Start(start))?;
 
     let reader = Mutex::new(BufReader::new(f).take(end - start + 1));
-    Ok(FileStream { reader })
+    let size = if start > max_end {
+        0
+    } else {
+        std::cmp::min(end, max_end) - start + 1
+    };
+    Ok((FileStream { reader }, size))
 }
 
 /// Create breadcrumbs for navigation.
@@ -434,29 +438,35 @@ mod t_send {
     #[tokio::test]
     async fn t_send_file_with_range_one_byte() {
         for i in 0..=7 {
-            let s = send_file_with_range(file_txt_path(), (i, i)).unwrap();
+            let (s, size) = send_file_with_range(file_txt_path(), (i, i)).unwrap();
             let buf = stream_to_vec(s).await;
             assert_eq!(buf, i.to_string().as_bytes());
+            assert_eq!(size, 1);
         }
     }
 
     #[tokio::test]
     async fn t_send_file_with_range_multiple_bytes() {
-        let s = send_file_with_range(file_txt_path(), (0, 1)).unwrap();
+        let (s, size) = send_file_with_range(file_txt_path(), (0, 1)).unwrap();
         let buf = stream_to_vec(s).await;
         assert_eq!(buf, b"01");
-        let s = send_file_with_range(file_txt_path(), (1, 2)).unwrap();
+        assert_eq!(size, 2);
+        let (s, size) = send_file_with_range(file_txt_path(), (1, 2)).unwrap();
         let buf = stream_to_vec(s).await;
         assert_eq!(buf, b"12");
-        let s = send_file_with_range(file_txt_path(), (1, 4)).unwrap();
+        assert_eq!(size, 2);
+        let (s, size) = send_file_with_range(file_txt_path(), (1, 4)).unwrap();
         let buf = stream_to_vec(s).await;
         assert_eq!(buf, b"1234");
-        let s = send_file_with_range(file_txt_path(), (7, 65535)).unwrap();
+        assert_eq!(size, 4);
+        let (s, size) = send_file_with_range(file_txt_path(), (7, 65535)).unwrap();
         let buf = stream_to_vec(s).await;
         assert_eq!(buf, b"7");
-        let s = send_file_with_range(file_txt_path(), (8, 8)).unwrap();
+        assert_eq!(size, 1);
+        let (s, size) = send_file_with_range(file_txt_path(), (8, 8)).unwrap();
         let buf = stream_to_vec(s).await;
         assert_eq!(buf, b"");
+        assert_eq!(size, 0);
     }
 
     #[test]

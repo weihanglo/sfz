@@ -18,7 +18,6 @@ edition = "2021"
 clap = { version = "3", default-features = false, features = ["std", "cargo"] }
 # Server
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-tokio-util = { version = "0.7", features = ["io"] }
 hyper = { version = "0.14.20", features = ["http1", "server", "tcp", "stream"] }
 headers = "0.3"
 mime_guess = "2.0"
@@ -28,16 +27,16 @@ brotli = "3"
 flate2 = "1"
 # Rendering
 tera = "1"
-# For tera serializing variables to template.
-serde = { version = "1", features = ["derive"] }
-# Respect to .gitignore while listing directories.
-ignore = "0.4"
+serde = { version = "1.0", features = [
+  "derive",
+] } # For tera serializing variables to template.
+ignore = "0.4" # Respect to .gitignore while listing directories.
 # Logging
 chrono = "0.4"
 # Directory Download
 qstring = "0.7"
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
-futures = { version = "0.3" }
+futures = "0.3"
 tempfile = "3"
 
 [dev-dependencies]
