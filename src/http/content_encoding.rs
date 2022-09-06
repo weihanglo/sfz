@@ -7,12 +7,10 @@
 // except according to those terms.
 
 use std::cmp::Ordering;
-use std::io::{self, Read};
+use std::io::{self, BufReader};
 
-use flate2::{
-    bufread::{DeflateEncoder, GzEncoder},
-    Compression,
-};
+use flate2::read::{DeflateEncoder, GzEncoder};
+use flate2::Compression;
 use hyper::header::HeaderValue;
 
 use crate::http::{BR, DEFLATE, GZIP, IDENTITY};
@@ -128,18 +126,18 @@ pub fn get_prior_encoding<'a>(accept_encoding: &'a HeaderValue) -> &'static str 
 /// * `data` - Data to be compressed.
 /// * `encoding` - Only support `br`, `gzip`, `deflate` and `identity`.
 pub fn compress(data: &[u8], encoding: &str) -> io::Result<Vec<u8>> {
+    use std::io::prelude::*;
     let mut buf = Vec::new();
     match encoding {
         BR => {
-            io::BufReader::new(brotli::CompressorReader::new(data, 4096, 6, 20))
+            BufReader::new(brotli::CompressorReader::new(data, 4096, 6, 20))
                 .read_to_end(&mut buf)?;
         }
         GZIP => {
-            io::BufReader::new(GzEncoder::new(data, Compression::default()))
-                .read_to_end(&mut buf)?;
+            BufReader::new(GzEncoder::new(data, Compression::default())).read_to_end(&mut buf)?;
         }
         DEFLATE => {
-            io::BufReader::new(DeflateEncoder::new(data, Compression::default()))
+            BufReader::new(DeflateEncoder::new(data, Compression::default()))
                 .read_to_end(&mut buf)?;
         }
         _ => return Err(io::Error::new(io::ErrorKind::Other, "Unsupported Encoding")),
