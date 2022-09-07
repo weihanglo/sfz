@@ -13,7 +13,10 @@ use flate2::read::{DeflateEncoder, GzEncoder};
 use flate2::Compression;
 use hyper::header::HeaderValue;
 
-use crate::http::{BR, DEFLATE, GZIP, IDENTITY};
+pub const IDENTITY: &str = "identity";
+pub const DEFLATE: &str = "deflate";
+pub const GZIP: &str = "gzip";
+pub const BR: &str = "br";
 
 /// Inner helper type to store quality values.
 ///
@@ -143,6 +146,10 @@ pub fn compress(data: &[u8], encoding: &str) -> io::Result<Vec<u8>> {
         _ => return Err(io::Error::new(io::ErrorKind::Other, "Unsupported Encoding")),
     };
     Ok(buf)
+}
+
+pub fn should_compress(enc: &str) -> bool {
+    IDENTITY != enc
 }
 
 #[cfg(test)]
