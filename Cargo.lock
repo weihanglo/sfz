@@ -933,6 +933,7 @@ name = "sfz"
 version = "0.7.1"
 dependencies = [
  "brotli",
+ "bytes",
  "chrono",
  "clap",
  "flate2",

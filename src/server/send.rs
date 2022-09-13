@@ -14,6 +14,7 @@ use std::pin::Pin;
 use std::sync::Mutex;
 use std::task::Poll;
 
+use bytes::BytesMut;
 use futures::Stream;
 use ignore::WalkBuilder;
 use serde::Serialize;
@@ -156,13 +157,14 @@ impl<T: Read> Stream for FileStream<T> {
                 return Poll::Ready(Some(Err(e)));
             }
         };
-        let mut buf = [0u8; 4_096];
-        match r.read(&mut buf) {
+        let mut buf = BytesMut::zeroed(4_096);
+        match r.read(&mut buf[..]) {
             Ok(bytes) => {
                 if bytes == 0 {
                     Poll::Ready(None)
                 } else {
-                    Poll::Ready(Some(Ok(hyper::body::Bytes::from(buf[0..bytes].to_vec()))))
+                    buf.truncate(bytes);
+                    Poll::Ready(Some(Ok(buf.freeze())))
                 }
             }
             Err(e) => Poll::Ready(Some(Err(e))),
