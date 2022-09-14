@@ -7,8 +7,9 @@
 // except according to those terms.
 
 use std::cmp::Ordering;
-use std::io::{self, BufReader};
+use std::io::{self, Read};
 
+use bytes::{Bytes, BytesMut};
 use flate2::read::{DeflateEncoder, GzEncoder};
 use flate2::Compression;
 use hyper::header::HeaderValue;
@@ -128,24 +129,16 @@ pub fn get_prior_encoding<'a>(accept_encoding: &'a HeaderValue) -> &'static str 
 ///
 /// * `data` - Data to be compressed.
 /// * `encoding` - Only support `br`, `gzip`, `deflate` and `identity`.
-pub fn compress(data: &[u8], encoding: &str) -> io::Result<Vec<u8>> {
-    use std::io::prelude::*;
-    let mut buf = Vec::new();
-    match encoding {
-        BR => {
-            BufReader::new(brotli::CompressorReader::new(data, 4096, 6, 20))
-                .read_to_end(&mut buf)?;
-        }
-        GZIP => {
-            BufReader::new(GzEncoder::new(data, Compression::default())).read_to_end(&mut buf)?;
-        }
-        DEFLATE => {
-            BufReader::new(DeflateEncoder::new(data, Compression::default()))
-                .read_to_end(&mut buf)?;
-        }
+pub fn compress(data: &[u8], encoding: &str) -> io::Result<Bytes> {
+    let mut buf = BytesMut::zeroed(4_096);
+    let read_bytes = match encoding {
+        BR => brotli::CompressorReader::new(data, 4096, 6, 20).read(&mut buf[..])?,
+        GZIP => GzEncoder::new(data, Compression::default()).read(&mut buf[..])?,
+        DEFLATE => DeflateEncoder::new(data, Compression::default()).read(&mut buf[..])?,
         _ => return Err(io::Error::new(io::ErrorKind::Other, "Unsupported Encoding")),
     };
-    Ok(buf)
+    buf.truncate(read_bytes);
+    Ok(buf.freeze())
 }
 
 pub fn should_compress(enc: &str) -> bool {
@@ -258,10 +251,10 @@ mod t_compress {
     #[test]
     fn compressed() {
         let buf = compress(b"xxxxx", DEFLATE);
-        assert!(!buf.unwrap().is_empty());
+        assert_eq!(buf.unwrap().len(), 5);
         let buf = compress(b"xxxxx", GZIP);
-        assert!(!buf.unwrap().is_empty());
+        assert_eq!(buf.unwrap().len(), 15);
         let buf = compress(b"xxxxx", BR);
-        assert!(!buf.unwrap().is_empty());
+        assert_eq!(buf.unwrap().len(), 9);
     }
 }
