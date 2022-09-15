@@ -259,7 +259,7 @@ mod t_compress {
     async fn compressed() {
         let s = futures::stream::iter(vec![Ok::<_, io::Error>(Bytes::from_static(b"xxxxx"))]);
         let body = compress_stream(s, BR).unwrap();
-        assert_eq!(hyper::body::to_bytes(body).await.unwrap().len(), 10);
+        assert_eq!(hyper::body::to_bytes(body).await.unwrap().len(), 9);
 
         let s = futures::stream::iter(vec![Ok::<_, io::Error>(Bytes::from_static(b"xxxxx"))]);
         let body = compress_stream(s, DEFLATE).unwrap();
