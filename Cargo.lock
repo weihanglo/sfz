@@ -947,11 +947,9 @@ name = "sfz"
 version = "0.7.1"
 dependencies = [
  "async-compression",
- "brotli",
  "bytes",
  "chrono",
  "clap",
- "flate2",
  "futures",
  "headers",
  "hyper",
