@@ -18,6 +18,7 @@ edition = "2021"
 clap = { version = "3", default-features = false, features = ["std", "cargo"] }
 # Server
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio-util = { version = "0.7", features = ["io"] }
 hyper = { version = "0.14.20", features = ["http1", "server", "tcp", "stream"] }
 headers = "0.3"
 mime_guess = "2.0"
@@ -39,6 +40,12 @@ zip = { version = "0.6", default-features = false, features = ["deflate"] }
 futures = "0.3"
 tempfile = "3"
 bytes = "1"
+async-compression = { version = "0.3.7", features = [
+  "brotli",
+  "deflate",
+  "gzip",
+  "tokio",
+] }
 
 [dev-dependencies]
 tempfile = "3"

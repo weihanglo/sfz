@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Local;
-use futures::{StreamExt as _, TryStreamExt as _};
+use futures::TryStreamExt as _;
 use headers::{
     AcceptRanges, AccessControlAllowHeaders, AccessControlAllowOrigin, CacheControl, ContentLength,
     ContentType, ETag, HeaderMapExt, LastModified, Range, Server,
@@ -32,7 +32,7 @@ use serde::Serialize;
 use crate::cli::Args;
 use crate::extensions::{MimeExt, PathExt, SystemTimeExt};
 use crate::http::conditional_requests::{is_fresh, is_precondition_failed};
-use crate::http::content_encoding::{compress, get_prior_encoding, should_compress};
+use crate::http::content_encoding::{compress_stream, get_prior_encoding, should_compress};
 use crate::http::range_requests::{is_range_fresh, is_satisfiable_range};
 
 use crate::server::send::{send_dir, send_dir_as_zip, send_file, send_file_with_range};
@@ -411,13 +411,10 @@ impl InnerService {
             if let Some(encoding) = req.headers().get(hyper::header::ACCEPT_ENCODING) {
                 let content_encoding = get_prior_encoding(encoding);
                 if should_compress(content_encoding) {
-                    let stream = body
-                        .map_err(|_e| io::Error::from(io::ErrorKind::InvalidData))
-                        .map(|b| match b {
-                            Ok(b) => compress(&b, content_encoding),
-                            Err(e) => Err(e),
-                        });
-                    let body = Body::wrap_stream(stream);
+                    let b = compress_stream(
+                        body.map_err(|e| io::Error::new(io::ErrorKind::Other, e)),
+                        content_encoding,
+                    )?;
                     res.headers_mut().insert(
                         hyper::header::CONTENT_ENCODING,
                         hyper::header::HeaderValue::from_static(content_encoding),
@@ -427,7 +424,7 @@ impl InnerService {
                         hyper::header::VARY,
                         hyper::header::HeaderValue::from_name(hyper::header::ACCEPT_ENCODING),
                     );
-                    body
+                    b
                 } else {
                     body
                 }
