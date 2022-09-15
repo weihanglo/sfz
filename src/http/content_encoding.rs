@@ -9,7 +9,10 @@
 use std::cmp::Ordering;
 use std::io;
 
-use async_compression::tokio::bufread::{BrotliEncoder, DeflateEncoder, GzipEncoder};
+use async_compression::{
+    tokio::bufread::{BrotliEncoder, DeflateEncoder, GzipEncoder},
+    Level,
+};
 use bytes::Bytes;
 use futures::Stream;
 use hyper::header::HeaderValue;
@@ -130,9 +133,9 @@ pub fn compress_stream(
     encoding: &str,
 ) -> io::Result<hyper::Body> {
     match encoding {
-        BR => Ok(Body::wrap_stream(ReaderStream::new(BrotliEncoder::new(
-            StreamReader::new(input),
-        )))),
+        BR => Ok(Body::wrap_stream(ReaderStream::new(
+            BrotliEncoder::with_quality(StreamReader::new(input), Level::Fastest),
+        ))),
         DEFLATE => Ok(Body::wrap_stream(ReaderStream::new(DeflateEncoder::new(
             StreamReader::new(input),
         )))),
