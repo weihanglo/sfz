@@ -7,12 +7,14 @@
 // except according to those terms.
 
 use std::cmp::Ordering;
-use std::io::{self, Read};
+use std::io;
 
-use bytes::{Bytes, BytesMut};
-use flate2::read::{DeflateEncoder, GzEncoder};
-use flate2::Compression;
+use async_compression::tokio::bufread::{BrotliEncoder, DeflateEncoder, GzipEncoder};
+use bytes::Bytes;
+use futures::Stream;
 use hyper::header::HeaderValue;
+use hyper::Body;
+use tokio_util::io::{ReaderStream, StreamReader};
 
 pub const IDENTITY: &str = "identity";
 pub const DEFLATE: &str = "deflate";
@@ -123,22 +125,22 @@ pub fn get_prior_encoding<'a>(accept_encoding: &'a HeaderValue) -> &'static str 
         .unwrap_or(IDENTITY)
 }
 
-/// Compress data.
-///
-/// # Parameters
-///
-/// * `data` - Data to be compressed.
-/// * `encoding` - Only support `br`, `gzip`, `deflate` and `identity`.
-pub fn compress(data: &[u8], encoding: &str) -> io::Result<Bytes> {
-    let mut buf = BytesMut::zeroed(4_096);
-    let read_bytes = match encoding {
-        BR => brotli::CompressorReader::new(data, 4096, 6, 20).read(&mut buf[..])?,
-        GZIP => GzEncoder::new(data, Compression::default()).read(&mut buf[..])?,
-        DEFLATE => DeflateEncoder::new(data, Compression::default()).read(&mut buf[..])?,
-        _ => return Err(io::Error::new(io::ErrorKind::Other, "Unsupported Encoding")),
-    };
-    buf.truncate(read_bytes);
-    Ok(buf.freeze())
+pub fn compress_stream(
+    input: impl Stream<Item = io::Result<Bytes>> + std::marker::Send + 'static,
+    encoding: &str,
+) -> io::Result<hyper::Body> {
+    match encoding {
+        BR => Ok(Body::wrap_stream(ReaderStream::new(BrotliEncoder::new(
+            StreamReader::new(input),
+        )))),
+        DEFLATE => Ok(Body::wrap_stream(ReaderStream::new(DeflateEncoder::new(
+            StreamReader::new(input),
+        )))),
+        GZIP => Ok(Body::wrap_stream(ReaderStream::new(GzipEncoder::new(
+            StreamReader::new(input),
+        )))),
+        _ => Err(io::Error::new(io::ErrorKind::Other, "Unsupported Encoding")),
+    }
 }
 
 pub fn should_compress(enc: &str) -> bool {
@@ -241,20 +243,27 @@ mod t_prior {
 #[cfg(test)]
 mod t_compress {
     use super::*;
+    use bytes::Bytes;
 
     #[test]
     fn failed() {
-        let error = compress(b"hello", "unrecognized").unwrap_err();
+        let s = futures::stream::iter(vec![Ok::<_, io::Error>(Bytes::from_static(b"hello"))]);
+        let error = compress_stream(s, "unrecognized").unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::Other);
     }
 
-    #[test]
-    fn compressed() {
-        let buf = compress(b"xxxxx", DEFLATE);
-        assert_eq!(buf.unwrap().len(), 5);
-        let buf = compress(b"xxxxx", GZIP);
-        assert_eq!(buf.unwrap().len(), 15);
-        let buf = compress(b"xxxxx", BR);
-        assert_eq!(buf.unwrap().len(), 9);
+    #[tokio::test]
+    async fn compressed() {
+        let s = futures::stream::iter(vec![Ok::<_, io::Error>(Bytes::from_static(b"xxxxx"))]);
+        let body = compress_stream(s, BR).unwrap();
+        assert_eq!(hyper::body::to_bytes(body).await.unwrap().len(), 10);
+
+        let s = futures::stream::iter(vec![Ok::<_, io::Error>(Bytes::from_static(b"xxxxx"))]);
+        let body = compress_stream(s, DEFLATE).unwrap();
+        assert_eq!(hyper::body::to_bytes(body).await.unwrap().len(), 5);
+
+        let s = futures::stream::iter(vec![Ok::<_, io::Error>(Bytes::from_static(b"xxxxx"))]);
+        let body = compress_stream(s, GZIP).unwrap();
+        assert_eq!(hyper::body::to_bytes(body).await.unwrap().len(), 23);
     }
 }
