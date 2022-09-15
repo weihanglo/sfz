@@ -24,8 +24,12 @@ headers = "0.3"
 mime_guess = "2.0"
 percent-encoding = "2.1"
 # Compression
-brotli = "3"
-flate2 = "1"
+async-compression = { version = "0.3.7", features = [
+  "brotli",
+  "deflate",
+  "gzip",
+  "tokio",
+] }
 # Rendering
 tera = "1"
 serde = { version = "1.0", features = [
@@ -40,12 +44,6 @@ zip = { version = "0.6", default-features = false, features = ["deflate"] }
 futures = "0.3"
 tempfile = "3"
 bytes = "1"
-async-compression = { version = "0.3.7", features = [
-  "brotli",
-  "deflate",
-  "gzip",
-  "tokio",
-] }
 
 [dev-dependencies]
 tempfile = "3"
