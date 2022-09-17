@@ -129,7 +129,7 @@ pub fn get_prior_encoding<'a>(accept_encoding: &'a HeaderValue) -> &'static str 
 }
 
 pub fn compress_stream(
-    input: impl Stream<Item = io::Result<Bytes>> + std::marker::Send + 'static,
+    input: impl Stream<Item = io::Result<Bytes>> + Send + 'static,
     encoding: &str,
 ) -> io::Result<hyper::Body> {
     match encoding {
@@ -246,7 +246,6 @@ mod t_prior {
 #[cfg(test)]
 mod t_compress {
     use super::*;
-    use bytes::Bytes;
 
     #[test]
     fn failed() {
