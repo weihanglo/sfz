@@ -128,6 +128,12 @@ pub fn get_prior_encoding<'a>(accept_encoding: &'a HeaderValue) -> &'static str 
         .unwrap_or(IDENTITY)
 }
 
+/// Compress data stream.
+///
+/// # Parameters
+///
+/// * `input` - [`futures::stream::Stream`](futures::stream::Stream) to be compressed e.g. [`hyper::body::Body`](hyper::body::Body).
+/// * `encoding` - Only support `br`, `deflate`, `gzip` and `identity`.
 pub fn compress_stream(
     input: impl Stream<Item = io::Result<Bytes>> + Send + 'static,
     encoding: &str,
