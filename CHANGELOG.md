@@ -3,7 +3,20 @@
 This project adheres to [Semantic Versioning](http://semver.org/).  
 Every release, along with the migration instructions, is documented on this file and Github [Releases](https://github.com/weihanglo/sfz/releases) page.
 
-## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.7.0...HEAD)
+## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.7.1...HEAD)
+
+## [v0.7.1] - 2022-01-21
+
+- fix: Sfz now uses Stream to send your files :tada: ([#97][], [#99][], kudos to [@henry40408][]!)
+- chore: fix lint errors and deprecations ([#86][], kudos to [@henry40408][]!)
+- chore: dependency updates ([#88][], kudos to [@henry40408][]!)
+
+[v0.7.1]: https://github.com/weihanglo/sfz/releases/tag/v0.7.1
+[v0.7.1-changes]: https://github.com/weihanglo/sfz/compare/v0.7.0...v0.7.1
+[#86]: https://github.com/weihanglo/sfz/pull/86
+[#88]: https://github.com/weihanglo/sfz/pull/88
+[#97]: https://github.com/weihanglo/sfz/pull/97
+[#99]: https://github.com/weihanglo/sfz/pull/99
 
 ## [v0.7.0] - 2022-01-21
 
