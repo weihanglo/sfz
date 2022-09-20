@@ -8,6 +8,7 @@
 
 use std::convert::{AsRef, Infallible};
 use std::io;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::str::Utf8Error;
 use std::sync::Arc;
@@ -21,6 +22,7 @@ use headers::{
 };
 // Can not use headers::ContentDisposition. Because of https://github.com/hyperium/headers/issues/8
 use hyper::header::{HeaderValue, CONTENT_DISPOSITION};
+use hyper::server::conn::AddrStream;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, StatusCode};
 use ignore::gitignore::Gitignore;
@@ -61,12 +63,13 @@ pub async fn serve(args: Args) -> BoxResult<()> {
     let path_prefix = args.path_prefix.clone().unwrap_or_default();
 
     let inner = Arc::new(InnerService::new(args));
-    let make_svc = make_service_fn(move |_| {
+    let make_svc = make_service_fn(move |conn: &AddrStream| {
+        let remote_addr = conn.remote_addr();
         let inner = inner.clone();
-        async {
+        async move {
             Ok::<_, Infallible>(service_fn(move |req| {
                 let inner = inner.clone();
-                inner.call(req)
+                inner.call(remote_addr, req)
             }))
         }
     });
@@ -96,20 +99,40 @@ impl InnerService {
         Self { args, gitignore }
     }
 
-    pub async fn call(self: Arc<Self>, req: Request) -> Result<Response, hyper::Error> {
+    pub async fn call(
+        self: Arc<Self>,
+        remote_addr: SocketAddr,
+        req: Request,
+    ) -> Result<Response, hyper::Error> {
         let res = self
             .handle_request(&req)
             .await
             .unwrap_or_else(|_| res::internal_server_error(Response::default()));
         // Logging
-        // TODO: use proper logging crate
         if self.args.log {
+            let ip = remote_addr.ip();
+            let local_time = Local::now().format("%d/%b/%Y %H:%M:%S %z");
+            let method = req.method();
+            let uri = req.uri();
+            let status = res.status().as_u16();
+
+            // http::version::Version implements Debug to show HTTP/1.1 instead of Display
+            let version = req.version();
+
+            let content_length = res
+                .headers()
+                .get(hyper::header::CONTENT_LENGTH)
+                .map(|s| s.to_str().unwrap_or_default())
+                .unwrap_or("-");
+
+            let user_agent = req
+                .headers()
+                .get(hyper::header::USER_AGENT)
+                .map(|s| s.to_str().ok().unwrap_or_default())
+                .unwrap_or("-");
+
             println!(
-                r#"[{}] "{} {}" - {}"#,
-                Local::now().format("%d/%b/%Y %H:%M:%S"),
-                req.method(),
-                req.uri(),
-                res.status(),
+                r#"{ip} - - [{local_time}] "{method} {uri} {version:?}" {status} {content_length} "-" "{user_agent}" "-""#
             );
         }
         // Returning response
@@ -424,6 +447,12 @@ impl InnerService {
                         hyper::header::VARY,
                         hyper::header::HeaderValue::from_name(hyper::header::ACCEPT_ENCODING),
                     );
+
+                    // Unset Content-Length only when body is compressed,
+                    // otherwise the client will get confused
+                    // e.g. curl: (18) transfer closed with N bytes remaining to read
+                    content_length = None;
+
                     b
                 } else {
                     body
@@ -432,19 +461,17 @@ impl InnerService {
                 body
             }
         } else {
-            // Set Content-Length only when body is not compressed,
-            // otherwise the client will get confused
-            // e.g. curl: (18) transfer closed with N bytes remaining to read
-            if let Some(content_length) = content_length {
-                res.headers_mut()
-                    .typed_insert(ContentLength(content_length));
-            }
             body
         };
 
         // Common headers
         res.headers_mut().typed_insert(AcceptRanges::bytes());
         res.headers_mut().typed_insert(ContentType::from(mime_type));
+
+        if let Some(content_length) = content_length {
+            res.headers_mut()
+                .typed_insert(ContentLength(content_length));
+        }
 
         *res.body_mut() = body;
         Ok(res)
