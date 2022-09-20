@@ -5,7 +5,7 @@ Every release, along with the migration instructions, is documented on this file
 
 ## [Unreleased](https://github.com/weihanglo/sfz/compare/v0.7.1...HEAD)
 
-## [v0.7.1] - 2022-01-21
+## [v0.7.1] - 2022-09-20
 
 - fix: Sfz now uses Stream to send your files :tada: ([#97][], [#99][], kudos to [@henry40408][]!)
 - chore: fix lint errors and deprecations ([#86][], kudos to [@henry40408][]!)
