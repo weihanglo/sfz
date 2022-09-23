@@ -14,7 +14,6 @@ use std::str::Utf8Error;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::Local;
 use futures::TryStreamExt as _;
 use headers::{
     AcceptRanges, AccessControlAllowHeaders, AccessControlAllowOrigin, CacheControl, ContentLength,
@@ -35,6 +34,7 @@ use crate::cli::Args;
 use crate::extensions::{MimeExt, PathExt, SystemTimeExt};
 use crate::http::conditional_requests::{is_fresh, is_precondition_failed};
 use crate::http::content_encoding::{compress_stream, get_prior_encoding, should_compress};
+use crate::http::loggable::{Log, LoggableBody};
 use crate::http::range_requests::{is_range_fresh, is_satisfiable_range};
 
 use crate::server::send::{send_dir, send_dir_as_zip, send_file, send_file_with_range};
@@ -104,39 +104,10 @@ impl InnerService {
         remote_addr: SocketAddr,
         req: Request,
     ) -> Result<Response, hyper::Error> {
-        let res = self
-            .handle_request(&req)
+        Ok(self
+            .handle_request(self.args.log, remote_addr, &req)
             .await
-            .unwrap_or_else(|_| res::internal_server_error(Response::default()));
-        // Logging
-        if self.args.log {
-            let ip = remote_addr.ip();
-            let local_time = Local::now().format("%d/%b/%Y %H:%M:%S %z");
-            let method = req.method();
-            let uri = req.uri();
-            let status = res.status().as_u16();
-
-            // http::version::Version implements Debug to show HTTP/1.1 instead of Display
-            let version = req.version();
-
-            let content_length = res
-                .headers()
-                .get(hyper::header::CONTENT_LENGTH)
-                .map(|s| s.to_str().unwrap_or_default())
-                .unwrap_or("-");
-
-            let user_agent = req
-                .headers()
-                .get(hyper::header::USER_AGENT)
-                .map(|s| s.to_str().ok().unwrap_or_default())
-                .unwrap_or("-");
-
-            println!(
-                r#"{ip} - - [{local_time}] "{method} {uri} {version:?}" {status} {content_length} "-" "{user_agent}" "-""#
-            );
-        }
-        // Returning response
-        Ok(res)
+            .unwrap_or_else(|_| res::internal_server_error(Response::default())))
     }
 
     /// Construct file path from request path.
@@ -282,7 +253,12 @@ impl InnerService {
     }
 
     /// Request handler for `MyService`.
-    async fn handle_request(&self, req: &Request) -> BoxResult<Response> {
+    async fn handle_request(
+        &self,
+        log_enabled: bool,
+        remote_addr: SocketAddr,
+        req: &Request,
+    ) -> BoxResult<Response> {
         // Construct response.
         let mut res = Response::default();
         res.headers_mut()
@@ -473,7 +449,15 @@ impl InnerService {
                 .typed_insert(ContentLength(content_length));
         }
 
-        *res.body_mut() = body;
+        let log = if log_enabled {
+            Some(Log::new(remote_addr, req, &res))
+        } else {
+            None
+        };
+        *res.body_mut() = match content_length {
+            Some(l) => LoggableBody::with_content_length(log, body, l),
+            None => LoggableBody::new(log, body),
+        };
         Ok(res)
     }
 

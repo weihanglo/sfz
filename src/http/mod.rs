@@ -8,4 +8,5 @@
 
 pub mod conditional_requests;
 pub mod content_encoding;
+pub mod loggable;
 pub mod range_requests;

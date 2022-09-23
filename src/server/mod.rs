@@ -10,7 +10,9 @@ mod res;
 mod send;
 mod serve;
 
+use crate::http::loggable::LoggableBody;
+
 pub type Request = hyper::Request<hyper::Body>;
-pub type Response = hyper::Response<hyper::Body>;
+pub type Response = hyper::Response<LoggableBody<hyper::Body>>;
 
 pub use self::serve::{serve, PathType};
