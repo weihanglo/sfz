@@ -411,7 +411,7 @@ impl InnerService {
             if let Some(encoding) = req.headers().get(hyper::header::ACCEPT_ENCODING) {
                 let content_encoding = get_prior_encoding(encoding);
                 if should_compress(content_encoding) {
-                    let b = compress_stream(
+                    let body = compress_stream(
                         body.map_err(|e| io::Error::new(io::ErrorKind::Other, e)),
                         content_encoding,
                     )?;
@@ -424,7 +424,9 @@ impl InnerService {
                         hyper::header::VARY,
                         hyper::header::HeaderValue::from_name(hyper::header::ACCEPT_ENCODING),
                     );
-                    b
+                    // Unset Content-Length to enable Transfer-Encoding
+                    content_length = None;
+                    body
                 } else {
                     body
                 }
@@ -432,19 +434,20 @@ impl InnerService {
                 body
             }
         } else {
-            // Set Content-Length only when body is not compressed,
-            // otherwise the client will get confused
-            // e.g. curl: (18) transfer closed with N bytes remaining to read
-            if let Some(content_length) = content_length {
-                res.headers_mut()
-                    .typed_insert(ContentLength(content_length));
-            }
             body
         };
 
         // Common headers
         res.headers_mut().typed_insert(AcceptRanges::bytes());
         res.headers_mut().typed_insert(ContentType::from(mime_type));
+
+        // Set Content-Length only when body is not compressed,
+        // otherwise the client will get confused
+        // e.g. curl: (18) transfer closed with N bytes remaining to read
+        if let Some(content_length) = content_length {
+            res.headers_mut()
+                .typed_insert(ContentLength(content_length));
+        }
 
         *res.body_mut() = body;
         Ok(res)
