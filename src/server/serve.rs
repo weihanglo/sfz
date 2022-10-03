@@ -6,6 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::borrow::Cow;
 use std::convert::{AsRef, Infallible};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -258,6 +259,35 @@ impl InnerService {
         }
     }
 
+    fn get_content_encoding<'a>(
+        &'a self,
+        req: &'a Request,
+        res: &'a mut Response,
+        mime_type: &'a mime::Mime,
+    ) -> Option<Cow<'a, str>> {
+        if !self.can_compress(res.status(), mime_type) {
+            return None;
+        }
+        let encoding = match req.headers().get(hyper::header::ACCEPT_ENCODING) {
+            Some(e) => e,
+            None => return None,
+        };
+        let content_encoding = get_prior_encoding(encoding);
+        if !should_compress(content_encoding) {
+            return None;
+        }
+        res.headers_mut().insert(
+            hyper::header::CONTENT_ENCODING,
+            hyper::header::HeaderValue::from_static(content_encoding),
+        );
+        // Representation varies, so responds with a `Vary` header.
+        res.headers_mut().insert(
+            hyper::header::VARY,
+            hyper::header::HeaderValue::from_name(hyper::header::ACCEPT_ENCODING),
+        );
+        Some(content_encoding.into())
+    }
+
     /// Request handler for `MyService`.
     async fn handle_request(&self, req: &Request) -> BoxResult<Response> {
         // Construct response.
@@ -406,36 +436,13 @@ impl InnerService {
         }
 
         let mime_type = InnerService::guess_path_mime(&path, action);
-
-        let body = if self.can_compress(res.status(), &mime_type) {
-            if let Some(encoding) = req.headers().get(hyper::header::ACCEPT_ENCODING) {
-                let content_encoding = get_prior_encoding(encoding);
-                if should_compress(content_encoding) {
-                    let body = compress_stream(
-                        body.map_err(|e| io::Error::new(io::ErrorKind::Other, e)),
-                        content_encoding,
-                    )?;
-                    res.headers_mut().insert(
-                        hyper::header::CONTENT_ENCODING,
-                        hyper::header::HeaderValue::from_static(content_encoding),
-                    );
-                    // Representation varies, so responds with a `Vary` header.
-                    res.headers_mut().insert(
-                        hyper::header::VARY,
-                        hyper::header::HeaderValue::from_name(hyper::header::ACCEPT_ENCODING),
-                    );
-                    // Unset Content-Length to enable Transfer-Encoding
-                    content_length = None;
-                    body
-                } else {
-                    body
-                }
-            } else {
-                body
-            }
-        } else {
-            body
-        };
+        if let Some(content_encoding) = self.get_content_encoding(req, &mut res, &mime_type) {
+            body = compress_stream(
+                body.map_err(|e| io::Error::new(io::ErrorKind::Other, e)),
+                content_encoding.as_ref(),
+            )?;
+            content_length = None;
+        }
 
         // Common headers
         res.headers_mut().typed_insert(AcceptRanges::bytes());
