@@ -6,7 +6,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::borrow::Cow;
 use std::convert::{AsRef, Infallible};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -261,14 +260,14 @@ impl InnerService {
 
     fn get_content_encoding<'a>(
         &'a self,
-        req: &'a Request,
-        res: &'a mut Response,
+        accept_encoding: Option<&'a HeaderValue>,
+        status: StatusCode,
         mime_type: &'a mime::Mime,
-    ) -> Option<Cow<'a, str>> {
-        if !self.can_compress(res.status(), mime_type) {
+    ) -> Option<&'static str> {
+        if !self.can_compress(status, mime_type) {
             return None;
         }
-        let encoding = match req.headers().get(hyper::header::ACCEPT_ENCODING) {
+        let encoding = match accept_encoding {
             Some(e) => e,
             None => return None,
         };
@@ -276,16 +275,7 @@ impl InnerService {
         if !should_compress(content_encoding) {
             return None;
         }
-        res.headers_mut().insert(
-            hyper::header::CONTENT_ENCODING,
-            hyper::header::HeaderValue::from_static(content_encoding),
-        );
-        // Representation varies, so responds with a `Vary` header.
-        res.headers_mut().insert(
-            hyper::header::VARY,
-            hyper::header::HeaderValue::from_name(hyper::header::ACCEPT_ENCODING),
-        );
-        Some(content_encoding.into())
+        Some(content_encoding)
     }
 
     /// Request handler for `MyService`.
@@ -435,13 +425,25 @@ impl InnerService {
             }
         }
 
+        let accept_encoding = req.headers().get(hyper::header::ACCEPT_ENCODING);
         let mime_type = InnerService::guess_path_mime(&path, action);
-        if let Some(content_encoding) = self.get_content_encoding(req, &mut res, &mime_type) {
+        if let Some(content_encoding) =
+            self.get_content_encoding(accept_encoding, res.status(), &mime_type)
+        {
             body = compress_stream(
                 body.map_err(|e| io::Error::new(io::ErrorKind::Other, e)),
                 content_encoding.as_ref(),
             )?;
             content_length = None;
+            res.headers_mut().insert(
+                hyper::header::CONTENT_ENCODING,
+                hyper::header::HeaderValue::from_static(content_encoding),
+            );
+            // Representation varies, so responds with a `Vary` header.
+            res.headers_mut().insert(
+                hyper::header::VARY,
+                hyper::header::HeaderValue::from_name(hyper::header::ACCEPT_ENCODING),
+            );
         }
 
         // Common headers
@@ -816,4 +818,31 @@ mod t_server {
     #[ignore]
     #[test]
     fn handle_request() {}
+
+    #[test]
+    fn get_gzip_content_encoding() {
+        let args = Args::default();
+        let (service, _) = bootstrap(args);
+
+        let accept_encoding = &HeaderValue::from_str("gzip").unwrap();
+        let accept_encoding = Some(accept_encoding);
+
+        let status = StatusCode::OK;
+        let mime_type = &mime::TEXT_PLAIN;
+        let content_encoding = service.get_content_encoding(accept_encoding, status, mime_type);
+        assert_eq!(Some("gzip"), content_encoding);
+    }
+
+    #[test]
+    fn get_identity_content_encoding() {
+        let args = Args::default();
+        let (service, _) = bootstrap(args);
+
+        let accept_encoding = None;
+
+        let status = StatusCode::OK;
+        let mime_type = &mime::TEXT_PLAIN;
+        let content_encoding = service.get_content_encoding(accept_encoding, status, mime_type);
+        assert_eq!(None, content_encoding);
+    }
 }
