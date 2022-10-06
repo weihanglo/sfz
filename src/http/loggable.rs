@@ -112,35 +112,37 @@ where
             self.bytes_sent.fetch_add(b.remaining(), Ordering::AcqRel);
         }
 
-        let done = if polled.is_none() {
-            true
+        let has_data = if polled.is_none() {
+            false
         } else if let Some(l) = self.content_length {
             // If Content-Length header is set when body is not compressed,
             // hyper will not call poll_data to get None,
             // thus we cannot track when we should print the log message.
             // We need to track whether the entire body was sent.
-            self.bytes_sent.load(Ordering::Acquire) == l as usize
+            self.bytes_sent.load(Ordering::Acquire) < l as usize
         } else {
-            false
+            true
         };
 
-        if done {
-            if let Some(ref l) = self.log {
-                let ip = match l.remote_addr {
-                    None => "-".to_string(),
-                    Some(ip) => ip.to_string(),
-                };
-                let local_time = Local::now().format("%d/%b/%Y %H:%M:%S %z");
-                let method = &l.method;
-                let uri = &l.uri;
-                let version = l.version;
-                let status = l.status;
-                let bytes_sent = self.bytes_sent.load(Ordering::Acquire);
-                let user_agent = &l.user_agent;
-                println!(
-                    r#"{ip} - - [{local_time}] "{method} {uri} {version:?}" {status} {bytes_sent} "-" "{user_agent}" "-""#
-                );
-            }
+        if has_data {
+            return Poll::Ready(polled);
+        }
+
+        if let Some(ref l) = self.log {
+            let ip = match l.remote_addr {
+                None => "-".to_string(),
+                Some(ip) => ip.to_string(),
+            };
+            let local_time = Local::now().format("%d/%b/%Y %H:%M:%S %z");
+            let method = &l.method;
+            let uri = &l.uri;
+            let version = l.version;
+            let status = l.status;
+            let bytes_sent = self.bytes_sent.load(Ordering::Acquire);
+            let user_agent = &l.user_agent;
+            println!(
+                r#"{ip} - - [{local_time}] "{method} {uri} {version:?}" {status} {bytes_sent} "-" "{user_agent}" "-""#
+            );
         }
 
         Poll::Ready(polled)
