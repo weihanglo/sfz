@@ -252,6 +252,26 @@ impl InnerService {
         }
     }
 
+    fn get_content_encoding(
+        &self,
+        accept_encoding: Option<&HeaderValue>,
+        status: StatusCode,
+        mime_type: &mime::Mime,
+    ) -> Option<&str> {
+        if !self.can_compress(status, mime_type) {
+            return None;
+        }
+        let encoding = match accept_encoding {
+            Some(e) => e,
+            None => return None,
+        };
+        let content_encoding = get_prior_encoding(encoding);
+        if !should_compress(content_encoding) {
+            return None;
+        }
+        Some(content_encoding)
+    }
+
     /// Request handler for `MyService`.
     async fn handle_request(
         &self,
@@ -404,46 +424,34 @@ impl InnerService {
             }
         }
 
+        let accept_encoding = req.headers().get(hyper::header::ACCEPT_ENCODING);
         let mime_type = InnerService::guess_path_mime(&path, action);
-
-        let body = if self.can_compress(res.status(), &mime_type) {
-            if let Some(encoding) = req.headers().get(hyper::header::ACCEPT_ENCODING) {
-                let content_encoding = get_prior_encoding(encoding);
-                if should_compress(content_encoding) {
-                    let b = compress_stream(
-                        body.map_err(|e| io::Error::new(io::ErrorKind::Other, e)),
-                        content_encoding,
-                    )?;
-                    res.headers_mut().insert(
-                        hyper::header::CONTENT_ENCODING,
-                        hyper::header::HeaderValue::from_static(content_encoding),
-                    );
-                    // Representation varies, so responds with a `Vary` header.
-                    res.headers_mut().insert(
-                        hyper::header::VARY,
-                        hyper::header::HeaderValue::from_name(hyper::header::ACCEPT_ENCODING),
-                    );
-
-                    // Unset Content-Length only when body is compressed,
-                    // otherwise the client will get confused
-                    // e.g. curl: (18) transfer closed with N bytes remaining to read
-                    content_length = None;
-
-                    b
-                } else {
-                    body
-                }
-            } else {
-                body
-            }
-        } else {
-            body
-        };
+        if let Some(content_encoding) =
+            self.get_content_encoding(accept_encoding, res.status(), &mime_type)
+        {
+            body = compress_stream(
+                body.map_err(|e| io::Error::new(io::ErrorKind::Other, e)),
+                content_encoding,
+            )?;
+            content_length = None;
+            res.headers_mut().insert(
+                hyper::header::CONTENT_ENCODING,
+                hyper::header::HeaderValue::from_str(content_encoding)?,
+            );
+            // Representation varies, so responds with a `Vary` header.
+            res.headers_mut().insert(
+                hyper::header::VARY,
+                hyper::header::HeaderValue::from_name(hyper::header::ACCEPT_ENCODING),
+            );
+        }
 
         // Common headers
         res.headers_mut().typed_insert(AcceptRanges::bytes());
         res.headers_mut().typed_insert(ContentType::from(mime_type));
 
+        // Set Content-Length only when body is not compressed,
+        // otherwise the client will get confused
+        // e.g. curl: (18) transfer closed with N bytes remaining to read
         if let Some(content_length) = content_length {
             res.headers_mut()
                 .typed_insert(ContentLength(content_length));
@@ -817,4 +825,31 @@ mod t_server {
     #[ignore]
     #[test]
     fn handle_request() {}
+
+    #[test]
+    fn get_gzip_content_encoding() {
+        let args = Args::default();
+        let (service, _) = bootstrap(args);
+
+        let accept_encoding = &HeaderValue::from_str("gzip").unwrap();
+        let accept_encoding = Some(accept_encoding);
+
+        let status = StatusCode::OK;
+        let mime_type = &mime::TEXT_PLAIN;
+        let content_encoding = service.get_content_encoding(accept_encoding, status, mime_type);
+        assert_eq!(Some("gzip"), content_encoding);
+    }
+
+    #[test]
+    fn get_identity_content_encoding() {
+        let args = Args::default();
+        let (service, _) = bootstrap(args);
+
+        let accept_encoding = None;
+
+        let status = StatusCode::OK;
+        let mime_type = &mime::TEXT_PLAIN;
+        let content_encoding = service.get_content_encoding(accept_encoding, status, mime_type);
+        assert_eq!(None, content_encoding);
+    }
 }
