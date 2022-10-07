@@ -107,7 +107,10 @@ impl InnerService {
         Ok(self
             .handle_request(self.args.log, remote_addr, &req)
             .await
-            .unwrap_or_else(|_| res::internal_server_error(Response::default())))
+            .unwrap_or_else(|e| {
+                eprintln!("{e:?}");
+                res::internal_server_error(Response::default())
+            }))
     }
 
     /// Construct file path from request path.
