@@ -73,20 +73,11 @@ impl<B> LoggableBody<B>
 where
     B: HttpBody,
 {
-    pub fn new(log: Option<Log>, inner: B) -> Self {
+    pub fn new(log: Option<Log>, inner: B, content_length: Option<u64>) -> Self {
         Self {
             inner,
             bytes_sent: Default::default(),
-            content_length: None,
-            log,
-        }
-    }
-
-    pub fn with_content_length(log: Option<Log>, inner: B, content_length: u64) -> Self {
-        Self {
-            inner,
-            bytes_sent: Default::default(),
-            content_length: Some(content_length),
+            content_length,
             log,
         }
     }

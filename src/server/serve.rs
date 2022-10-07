@@ -105,7 +105,7 @@ impl InnerService {
         req: Request,
     ) -> Result<Response, hyper::Error> {
         Ok(self
-            .handle_request(self.args.log, remote_addr, &req)
+            .handle_request(remote_addr, &req)
             .await
             .unwrap_or_else(|e| {
                 eprintln!("{e:?}");
@@ -276,12 +276,7 @@ impl InnerService {
     }
 
     /// Request handler for `MyService`.
-    async fn handle_request(
-        &self,
-        log_enabled: bool,
-        remote_addr: SocketAddr,
-        req: &Request,
-    ) -> BoxResult<Response> {
+    async fn handle_request(&self, remote_addr: SocketAddr, req: &Request) -> BoxResult<Response> {
         // Construct response.
         let mut res = Response::default();
         res.headers_mut()
@@ -460,15 +455,12 @@ impl InnerService {
                 .typed_insert(ContentLength(content_length));
         }
 
-        let log = if log_enabled {
+        let log = if self.args.log {
             Some(Log::new(remote_addr, req, &res))
         } else {
             None
         };
-        *res.body_mut() = match content_length {
-            Some(l) => LoggableBody::with_content_length(log, body, l),
-            None => LoggableBody::new(log, body),
-        };
+        *res.body_mut() = LoggableBody::new(log, body, content_length);
         Ok(res)
     }
 
