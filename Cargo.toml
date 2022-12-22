@@ -15,7 +15,7 @@ edition = "2021"
 
 [dependencies]
 # Command-line
-clap = { version = "3", default-features = false, features = ["std", "cargo"] }
+clap = { version = "3.2.23", default-features = false, features = ["std", "cargo"] }
 # Server
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tokio-util = { version = "0.7", features = ["io"] }
