@@ -1,3 +1,12 @@
+> Thank you for using this tool so far. Unfortunately I have no time
+> maintaining it, but I believe people can find a better alternative
+> out there on [crates.io](https://crates.io).
+>
+> If you are still interested in supporting Rust and its community, please
+> consider **sponsoring Rust developers you like**. You can find a few from
+> the official [Rust teams](https://www.rust-lang.org/governance/),
+> or just [buy me a coffee](https://github.com/sponsors/weihanglo) ❤️.
+
 # [![sfz](.github/sfz.svg)][sfz]
 
 [![Crates.io](https://img.shields.io/crates/v/sfz.svg)](https://crates.io/crates/sfz)
